@@ -1,0 +1,144 @@
+# Purpose: the OTel Collector pipeline that makes ADR-0009's exemplar strategy live — the
+# metrics→traces link. Mounted read-only into the `otel-collector` service by
+# `deploy/compose/dev.yml`.
+#
+# Pinned image: otel/opentelemetry-collector-contrib:0.140.0
+# @sha256:ffc818ee108d0b934fd14207fd87ff247c9b64f344ed349d0b66c166c18a2312 .
+# Every field below was validated against THAT EXACT digest with `otelcol-contrib validate
+# --config=...` (strict `mapstructure` decoding — an unknown key is a hard error, verified by
+# deliberately injecting a bogus field and watching it reject) and, for the receiver/connector
+# behaviour that `validate` cannot see (operator semantics, actual metric names, exemplar
+# presence), by running the real pinned binary end-to-end and reading its `debug` exporter output
+# — not reasoned from memory or docs.
+#
+# Backend exporter: OPERATOR-SUPPLIED, NO DEFAULT — `OTEL_BACKEND_ENDPOINT`
+# has no `:-fallback` in the `${env:...}` reference below, so an operator who forgets to set it
+# gets a collector that refuses to start ("at least one endpoint must be specified"), never one
+# that silently drops every signal. Verified: `validate` against this file with the env var unset
+# fails; set to any well-formed URL, it passes. No default credentials either — add `headers:`/
+# `tls:` under the `otlphttp` exporter for a real credentialed backend; this file deliberately
+# ships neither, so nothing here can leak toward a hardcoded destination.
+
+receivers:
+  # The api's OTLP-HTTP exporters (`packages/observability/src/sdk.ts`) point `OTEL_EXPORTER_OTLP_ENDPOINT`
+  # at this receiver's :4318 — traces/metrics/logs all arrive here (the app never talks to the
+  # backend directly).
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+  # [AUD-23]: the logs pipeline's missing source. `prod.yml`/`dev.yml` mount the Docker json-file
+  # log directory read-only at this exact path; every container's stdout (postgres/redis/caddy
+  # included, not just the api) lands here as one `*-json.log` file per container.
+  filelog:
+    include:
+      - /var/lib/docker/containers/*/*-json.log
+    include_file_path: true
+    start_at: beginning
+    # Three-stage unwrap, each stage proven against the pinned binary (see this WI's test suite):
+    #   1. `docker-envelope` parses the json-file wrapper (`{"log","stream","time"}`) into
+    #      attributes — this is dockerd's OWN framing, not the app's.
+    #   2. The two `move` steps rename the wrapper's `time`/`stream` OUT OF THE WAY before the next
+    #      stage. Without this, a container that logs single-line JSON with its OWN `time` key
+    #      (every app here does — ADR-0009's pino record shape) silently OVERWRITES the docker
+    #      envelope's ISO timestamp with the app's numeric one on the very same attribute name —
+    #      found empirically running this exact pipeline, not by inspection.
+    #   3. `app-json` parses the unwrapped `log` field (now `body`) as the app's own single-line
+    #      JSON, `parse_to: attributes` — so a field the app logs as `trace_id` (the pino mixin,
+    #      ADR-0009) arrives as the OTel log record's `trace_id` ATTRIBUTE, unchanged in name.
+    # `on_error: send_quiet` on both `json_parser` stages: most containers here are NOT the api
+    # (postgres/redis/caddy emit plain text, not JSON) — a parse failure forwards the entry with
+    # whatever attributes it already has rather than dropping it or crashing the receiver. Proven:
+    # a non-JSON fixture line survives stage 3 with `body` intact and no `trace_id` attribute,
+    # right next to a JSON line that gets one.
+    operators:
+      - type: json_parser
+        id: docker-envelope
+        parse_to: attributes
+        on_error: send_quiet
+      - type: move
+        from: attributes.time
+        to: attributes["docker.timestamp"]
+      - type: move
+        from: attributes.stream
+        to: attributes["docker.stream"]
+      - type: move
+        from: attributes.log
+        to: body
+      - type: json_parser
+        id: app-json
+        parse_from: body
+        parse_to: attributes
+        on_error: send_quiet
+
+connectors:
+  # ADR-0009 strategy A: derives exemplar-bearing RED metrics from the app's OWN spans (the api
+  # never emits native exemplars at the pinned `@opentelemetry/sdk-metrics` — see the ADR). The
+  # app keeps recording measurements inside active spans unchanged; this connector is what turns
+  # those spans into the metrics→traces link.
+  spanmetrics:
+    # Namespaced explicitly rather than left at the connector's bare default (`calls`/`duration`
+    # with no prefix) — a self-documenting, collision-resistant name pair, confirmed by a live run
+    # against the pinned binary to actually emit as `spanmetrics.calls` (Sum, monotonic) and
+    # `spanmetrics.duration` (Histogram, unit `ms`).
+    namespace: spanmetrics
+    # Aligned with `apps/api/src/runtime/build-app.ts`'s `API_HTTP_REQUEST_INSTRUMENT` histogram,
+    # which declares no explicit `View`/aggregation override — so it runs on
+    # `@opentelemetry/sdk-metrics` 2.4.0's OWN default boundaries. Read directly from that pinned
+    # version's `Aggregation.js` (`HistogramAggregator` default), not assumed: exactly this list,
+    # in milliseconds.
+    histogram:
+      explicit:
+        buckets:
+          [0ms, 5ms, 10ms, 25ms, 50ms, 75ms, 100ms, 250ms, 500ms, 750ms, 1000ms, 2500ms, 5000ms, 7500ms, 10000ms]
+    # ADR-0009's whole point: without this, the connector's datapoints carry no exemplar and the
+    # metrics→traces link stays exactly as absent as it was before this file existed.
+    exemplars:
+      enabled: true
+    # `dimensions_cache_size` is this connector's DEPRECATED field name at this pin (confirmed: the
+    # pinned binary logs a startup warning naming its replacement) — using the current name avoids
+    # shipping a config that already warns on day one.
+    aggregation_cardinality_limit: 1000
+    aggregation_temporality: 'AGGREGATION_TEMPORALITY_CUMULATIVE'
+    metrics_flush_interval: 15s
+
+processors:
+  batch: {}
+
+exporters:
+  # The one exporter every signal leaves through. No default endpoint, no default credentials —
+  # see this file's header.
+  otlphttp:
+    endpoint: ${env:OTEL_BACKEND_ENDPOINT}
+    # `encoding: json` over this exporter's protobuf default — a deliberate, verified choice, not
+    # a test-only fork of this file. OTLP/HTTP guarantees identical semantic content in both wire
+    # formats; JSON (gzip-compressed by this exporter's own default `compression: gzip`, confirmed
+    # against the pinned binary) is inspectable with a generic HTTP+gzip+JSON toolchain instead of
+    # requiring an OTLP protobuf schema to debug a payload by hand — worth it for a reference
+    # deploy operators are expected to read. this is the wire
+    # shape, so what it proves is what production actually sends, not a look-alike.
+    encoding: json
+
+service:
+  pipelines:
+    # traces → [spanmetrics, backend exporter]: the connector reads every span to derive
+    # metrics AND the raw spans still travel on to the backend for trace navigation.
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [spanmetrics, otlphttp]
+    # metrics (incl. spanmetrics output) → backend exporter: the app's own OTLP-emitted metrics
+    # (e.g. `api.http.request`, exemplar-less at this SDK pin) AND the connector's derived
+    # `spanmetrics.*` metrics (exemplar-bearing) share this one pipeline/exporter.
+    metrics:
+      receivers: [otlp, spanmetrics]
+      processors: [batch]
+      exporters: [otlphttp]
+    # logs → backend exporter: the app's own OTLP-emitted logs (currently none — ADR-0009 ships
+    # logs via stdout JSON, not OTLP, "initially") AND the filelog receiver's container-stdout
+    # capture ([AUD-23]) share this one pipeline/exporter.
+    logs:
+      receivers: [otlp, filelog]
+      processors: [batch]
+      exporters: [otlphttp]

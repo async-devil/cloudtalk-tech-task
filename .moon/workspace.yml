@@ -1,0 +1,20 @@
+projects:
+  globs:
+    - 'apps/*'
+    - 'packages/*'
+    - 'tools/*'
+  sources:
+    root: '.'
+
+vcs:
+  client: git
+  defaultBranch: main
+
+# Coarse tier direction (ADR-0001). Fine rules live in .dependency-cruiser.cjs.
+constraints:
+  tagRelationships:
+    tier-kernel: []
+    tier-facade: ['tier-kernel', 'tier-facade']
+    tier-capability: ['tier-kernel', 'tier-facade', 'tier-capability']
+    tier-app: ['tier-kernel', 'tier-facade', 'tier-capability', 'tier-app']
+    tier-tooling: ['tier-tooling']

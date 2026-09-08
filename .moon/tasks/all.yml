@@ -1,0 +1,44 @@
+# Workspace-inherited task defaults. Scoped to product projects only — `root` and `tools/*`
+# declare `layer: 'tool'` and define their own tasks, so these defaults never apply there.
+inheritedBy:
+  layers: ['application', 'library']
+
+tasks:
+  lint:
+    command: 'biome check .'
+  format:
+    command: 'biome check --write .'
+    options:
+      runInCI: false
+  # typecheck/test/test-integration need upstream dist/ present: workspace deps resolve through
+  # package.json#exports into dist, so a clean checkout fails without the upstream build having
+  # run first — an incidental-scheduling flake otherwise.
+  typecheck:
+    command: 'tsc --noEmit'
+    deps:
+      - '^:build'
+  build:
+    command: 'tsc'
+    deps:
+      - '^:build'
+  # Vitest per ADR-0010 (bun test is not the sanctioned runner).
+  test:
+    command: 'vitest run'
+    deps:
+      - '^:build'
+  test-integration:
+    command: 'vitest run --config vitest.integration.config.ts'
+    deps:
+      - '^:build'
+    options:
+      # Every test-integration task spins up its own Testcontainers stack (postgres/redis), and a
+      # full `moon ci` was launching several at once. Container startup under that contention is
+      # the root cause of "passes in isolation, flakes in the full chain": proof bodies that embed
+      # a wall-clock assumption observe a slower host than they were written against. This mutex
+      # removes the contention by serializing every test-integration task onto one virtual
+      # resource. Slower wall-clock, but the suites it protects are durability proofs.
+      mutex: 'container-test-integration'
+  dev:
+    command: 'bun run dev'
+    options:
+      runInCI: false

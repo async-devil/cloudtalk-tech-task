@@ -1,0 +1,12 @@
+# Repo-wide gates live on the root project, never duplicated per module. Task ids added here must
+# also be added to `tools/arch-checks/required-gates.json` in the same change — `gate-integrity`
+# fails the build on a gate that was renamed away or commented out.
+language: typescript
+layer: tool
+
+tags:
+  - tier-tooling
+
+tasks:
+  workspace-ok:
+    command: 'echo workspace-ok'

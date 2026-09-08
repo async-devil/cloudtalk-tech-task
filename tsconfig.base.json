@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "isolatedModules": true,
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "verbatimModuleSyntax": true, // compile-level type-only import enforcement, pairs with Biome useImportType
+    "declaration": true, // ADR-0002 .d.ts artifact surface
+    "declarationMap": true, // ADR-0002 .d.ts artifact surface
+    "sourceMap": true, // ADR-0002 .d.ts artifact surface
+    "forceConsistentCasingInFileNames": true, // cross-OS path safety
+    "skipLibCheck": true // third-party .d.ts noise; first-party stays fully checked
+  }
+}
