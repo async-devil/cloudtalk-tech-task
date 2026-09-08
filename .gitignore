@@ -1,0 +1,19 @@
+.idea/
+node_modules/
+dist/
+.moon/cache/
+*.tsbuildinfo
+coverage/
+
+# Secrets never enter the tree. `.env.*` is unanchored on purpose (it matches at every level);
+# the negation names the PATTERN rather than one path, so a future `.env.<tier>.example` is not
+# silently swallowed the day someone writes it.
+.env
+.env.*
+!.env.example
+!**/.env.*.example
+
+# Playwright run artifacts.
+apps/app/test-results/
+apps/app/playwright-report/
+apps/app/blob-report/
