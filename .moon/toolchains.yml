@@ -1,0 +1,9 @@
+# The single source of runtime/tool versions (ADR-0002).
+
+javascript:
+  packageManager: 'bun'
+  # Tasks are declared explicitly in moon config, never inferred from package.json scripts.
+  inferTasksFromScripts: false
+
+bun:
+  version: '1.3.14'

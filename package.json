@@ -1,0 +1,23 @@
+{
+  "name": "@repo/root",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "tools/*"
+  ],
+  "scripts": {
+    "extract-module": "bun tools/extract-module/src/index.ts",
+    "docs-index": "bun tools/arch-checks/src/docs-index.ts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.3",
+    "@moonrepo/cli": "2.4.3",
+    "@swc/core": "1.15.43",
+    "@vitest/coverage-v8": "4.1.10",
+    "dependency-cruiser": "18.1.0",
+    "typescript": "7.0.2"
+  },
+  "overrides": {}
+}

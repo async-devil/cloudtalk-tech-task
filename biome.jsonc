@@ -1,0 +1,164 @@
+{
+  // ADR-0003's curated ruleset. Every non-default rule carries its rationale inline, which is
+  // what requires the .jsonc variant (strict biome.json forbids comments — Biome 2.x).
+  "$schema": "https://biomejs.dev/schemas/2.5.3/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true // gitignored artifacts (.moon/cache, dist) are never lint targets
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space", // ADR-0003: 2-space
+    "indentWidth": 2, // ADR-0003: 2-space
+    "lineWidth": 100 // ADR-0003: 100 cols
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single" // ADR-0003: single quotes
+    },
+    // `__APP_VERSION__` is a Vite `define` — a TEXTUAL substitution the bundler performs, so there
+    // is no import and no runtime declaration for `noUndeclaredVariables` to find.
+    // `apps/app/src/vite-define.d.ts` declares it for TypeScript; this declares it for Biome. Both
+    // read the version from `apps/app/package.json`, so nothing here can drift.
+    "globals": ["__APP_VERSION__"]
+  },
+  "css": {
+    "parser": {
+      // ADR-0012 makes Tailwind v4 this repo's CSS stack, and v4 is CSS-first: `@theme`,
+      // `@source`, `@utility` and friends are the configuration surface, not an escape hatch.
+      // Without this flag biome's CSS parser rejects `packages/styles/src/**/*.css` outright
+      // ("Tailwind-specific syntax is disabled"), which also disables FORMATTING of the file —
+      // an unparseable token source is one nobody's linter is watching.
+      "tailwindDirectives": true
+    }
+  },
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "on" // ADR-0003: organizeImports is part of the curated set
+      }
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended", // baseline; groups below tighten it (ADR-0003)
+      "suspicious": "error", // ADR-0003: suspicious group at error
+      "correctness": "error", // ADR-0003: correctness group at error
+      "style": {
+        "useImportType": "error", // ADR-0003: named rule; pairs with tsconfig verbatimModuleSyntax
+        // ADR-0003: closed value sets are const objects, never TS `enum` (enum is non-erasable
+        // runtime syntax, interacts poorly with verbatimModuleSyntax/isolatedModules, and its
+        // values don't structurally unify with the literal types Zod and oRPC infer).
+        "noEnum": "error"
+      }
+    }
+  },
+  "overrides": [
+    {
+      // The blanket correctness group above also switches on framework-DOMAIN rules. Rules
+      // verified to misfire in this repo are turned off here, one per line with rationale.
+      // `useQwikValidLexicalScope` flags plain top-level arrow constants in test files as
+      // non-serializable Qwik scope captures — there is no Qwik anywhere in this repo.
+      // `noSolidDestructuredProps` flags `function Button({ className, ...rest })` because
+      // destructuring props breaks Solid's reactive proxy — React has no such proxy, and
+      // destructuring props is the idiom React's own docs use. There is no Solid here either
+      // (ADR-0012 pins React).
+      "includes": ["**"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "useQwikValidLexicalScope": "off",
+            "noSolidDestructuredProps": "off"
+          }
+        }
+      }
+    },
+    {
+      // ADR-0003: noConsole holds everywhere EXCEPT designated boundary/logging files.
+      // The SPA's error-reporting boundary is one of them: the browser has no
+      // `@repo/observability` facade (that package is server-side pino/OTel), so
+      // `apps/app/src/shared/observability` IS the one place ADR-0008's "handled once, at a
+      // boundary" lands on the client. It is named in `tools/arch-checks/src/no-core-logging.ts`'s
+      // allowlist for the same reason.
+      "includes": [
+        "packages/observability/src/internal/**",
+        "apps/app/src/shared/observability/**",
+        "tools/**",
+        // Build tooling, not the bundle — see the noNodejsModules block below. A CLI whose whole
+        // job is to report what it wrote has to be able to write to stdout.
+        "packages/styles/scripts/**"
+      ],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
+          }
+        }
+      }
+    },
+    {
+      // noNodejsModules targets browser bundles; repo tooling is server-side Bun scripts where
+      // node:* builtins are the correct API surface. Backend packages are server-side too — node:*
+      // is allowed in the packages listed here and in apps/api. Deliberately NOT listed:
+      // contracts, styles (consumed by browser bundles) and apps/app/src — those keep the rule.
+      // Adding a package here is a reviewed change.
+      "includes": [
+        "tools/**",
+        "apps/api/**",
+        // BUILD TOOLING, not browser code — the route-tree freshness checker reads the filesystem
+        // and spawns the generator. `apps/app/src/**` is deliberately not listed: that is the
+        // bundle, and it keeps the rule.
+        "apps/app/scripts/**",
+        // Playwright test tooling (spawns `docker compose`/`bun`, reads env) — same reasoning as
+        // `apps/app/scripts/**` above, and equally not the bundle.
+        "apps/app/e2e/**",
+        // vitest, which runs in a Node/Bun process, and suites here walk `src/` off disk. Same
+        // boundary as the two entries above.
+        "apps/app/test/**",
+        // BUILD TOOLING — the token-manifest generator and its freshness checker read the token
+        // CSS off disk. Exactly the `apps/app/scripts/**` case, and the same boundary:
+        // `packages/styles/src/**` is the bundle and keeps the rule, so the package as a whole
+        // stays browser-safe.
+        "packages/styles/scripts/**",
+        "packages/kernel/**",
+        "packages/config/**",
+        "packages/observability/**",
+        "packages/persistence/**",
+        "packages/messaging/**",
+        "packages/jobs/**",
+        "packages/auth/**"
+      ],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noNodejsModules": "off"
+          }
+        }
+      }
+    },
+    {
+      // Rule-test fixtures are deliberate boundary VIOLATIONS (dep-cruiser test data);
+      // linting them defeats their purpose. Formatter still applies.
+      "includes": ["tools/arch-checks/test/fixtures/**"],
+      "linter": {
+        "enabled": false
+      }
+    },
+    {
+      // TanStack Router's generated route tree. Generated artifacts are not hand-written source —
+      // this one carries `as any` casts the generator needs for its own recursive route types,
+      // which `suspicious`/`noExplicitAny` rejects at error. The FORMATTER still applies (the
+      // `app:route-tree` task runs `biome check --write` on it), which is what makes the committed
+      // file byte-stable and `app:route-tree-check`'s comparison exact. The second path is that
+      // check's throwaway regeneration target: it must get BYTE-IDENTICAL treatment to the
+      // committed file, or the freshness comparison fails on formatting rather than on drift.
+      "includes": ["apps/app/src/routeTree.gen.ts", "apps/app/src/.routeTree.check.gen.ts"],
+      "linter": {
+        "enabled": false
+      }
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+# The local development stack.
+#
+#   docker compose -f deploy/compose/dev.yml up -d
+#
+# `apps/api` runs on the bare host (`moon run api:dev`), not inside this network, so every service
+# it talks to publishes its port. The collector is the app's OTLP target — `.env.example`'s
+# `OTEL_EXPORTER_OTLP_ENDPOINT` default resolves to it — and it forwards to the all-in-one Grafana
+# stack over the compose network, which is why that one publishes only its UI.
+
+services:
+  postgres:
+    image: postgres:18
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev}
+      POSTGRES_DB: reviews
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      retries: 10
+    volumes:
+      # postgres:18+ images refuse the classic /var/lib/postgresql/data mount — data now lives in a
+      # major-version subdirectory under /var/lib/postgresql (pg_upgrade-friendly layout,
+      # docker-library/postgres#1259); mounting the parent is the supported configuration.
+      - postgres_data:/var/lib/postgresql
+
+  redis:
+    image: redis:8-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+
+  otel-lgtm:
+    image: grafana/otel-lgtm:0.29.0
+    ports:
+      - "3001:3000" # Grafana UI (host 3001 to avoid conflict with the API on 3000)
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.140.0@sha256:ffc818ee108d0b934fd14207fd87ff247c9b64f344ed349d0b66c166c18a2312
+    ports:
+      - "4318:4318" # the app's OTEL_EXPORTER_OTLP_ENDPOINT target
+    environment:
+      # Internal compose DNS — otel-lgtm's own OTLP intake, never published to the host.
+      OTEL_BACKEND_ENDPOINT: http://otel-lgtm:4318
+    volumes:
+      - ../otel/collector.yml:/etc/otelcol-contrib/config.yaml:ro
+
+volumes:
+  postgres_data:
