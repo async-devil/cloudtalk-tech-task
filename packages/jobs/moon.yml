@@ -1,0 +1,12 @@
+language: typescript
+layer: library
+
+tags:
+  - tier-capability
+  - liftable
+
+tasks:
+  # test-integration is package-local (Testcontainers postgres:18) and imports jobs' own src/
+  # relatively (helper-level proofs, not through the @repo/jobs package specifier), so — unlike
+  # messaging's spawned-bun-probe suite — it needs only its own dependencies built first. The
+  # workspace-inherited `deps: ['^:build']` already covers that; no override needed here.
