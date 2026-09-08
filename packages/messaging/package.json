@@ -1,0 +1,24 @@
+{
+  "name": "@repo/messaging",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "bullmq": "5.80.2",
+    "zod": "4.4.3",
+    "@repo/config": "workspace:*",
+    "@repo/contracts": "workspace:*",
+    "@repo/kernel": "workspace:*",
+    "@repo/observability": "workspace:*"
+  },
+  "devDependencies": {
+    "@opentelemetry/api": "1.9.1",
+    "testcontainers": "12.0.4",
+    "vitest": "4.1.10"
+  }
+}

@@ -1,0 +1,15 @@
+language: typescript
+layer: library
+
+tags:
+  - tier-facade
+  - liftable
+
+tasks:
+  # test-integration spawns probes as standalone `bun` processes (harness/spawn-probe.ts) that
+  # import '@repo/messaging' by package specifier, resolving through package.json#exports into
+  # dist/. The workspace-inherited task only depends on '^:build' (this package's dependencies),
+  # never its own — so on a clean checkout this package's own dist/ never gets built first.
+  test-integration:
+    deps:
+      - 'build'
