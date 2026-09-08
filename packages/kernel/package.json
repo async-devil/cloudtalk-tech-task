@@ -1,0 +1,14 @@
+{
+  "name": "@repo/kernel",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "devDependencies": {
+    "vitest": "4.1.10"
+  }
+}
