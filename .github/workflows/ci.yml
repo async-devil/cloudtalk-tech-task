@@ -1,0 +1,135 @@
+# The one gate chain: lint -> types -> tests -> architecture -> docs.
+#
+# Jobs are `ci`, `docs-check` and `gate-integrity`. That list is mirrored in
+# `tools/arch-checks/required-gates.json`, and the `gate-integrity` job checks the mirror — a gate
+# commented out "just for this PR" fails the build instead of quietly disappearing.
+#
+# Both actions are pinned by full commit SHA rather than by tag, so a republished tag cannot
+# silently change what CI runs.
+#
+# `oven-sh/setup-bun`'s `bun-version-file` input only recognises the basenames `package.json`,
+# `.tool-versions`, `.bumrc` and `.bun-version` — `.moon/toolchains.yml` is not one of them, and
+# this repo's `package.json` carries no `packageManager` field for it to fall back on. So the
+# single-source-of-truth pin (ADR-0002) is read explicitly in a first step and passed through.
+#
+# `fetch-depth: 0` on every checkout: `.moon/workspace.yml` sets `vcs.defaultBranch: main`, and
+# every `moon` invocation below resolves `main` through git to compute affected files. The default
+# shallow checkout on `pull_request` fetches only the merge commit, so `main` is not a resolvable
+# revision at all.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# One in-flight run per ref; a new push cancels the run it supersedes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: no job here writes anything back to the repository.
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Read the Bun version pin from .moon/toolchains.yml
+        id: bun-pin
+        run: |
+          version=$(grep -A1 '^bun:' .moon/toolchains.yml | tail -1 | sed -E "s/^[[:space:]]*version:[[:space:]]*['\"]?([^'\"]+)['\"]?[[:space:]]*\$/\1/")
+          if [ -z "$version" ]; then
+            echo "Could not parse a bun version out of .moon/toolchains.yml" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ steps.bun-pin.outputs.version }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # The pin is only a pin if something checks it. A version resolved by the action's own
+      # defaults is not what ADR-0002 decided.
+      - name: Assert the installed Bun matches the toolchain pin
+        run: |
+          actual="$(bun --version)"
+          expected="${{ steps.bun-pin.outputs.version }}"
+          if [ "$actual" != "$expected" ]; then
+            echo "Bun version drift: installed '$actual', .moon/toolchains.yml pins '$expected'" >&2
+            exit 1
+          fi
+          echo "Bun version OK: $actual"
+
+      - name: moon ci
+        run: bun moon ci
+        env:
+          CI: 'true'
+
+      # ADR-0001 point 3, per changed module. THE SCRIPT, not `moon run`: the task is
+      # `runInCI: false` on purpose (see its comment in moon.yml), and moon honours that for an
+      # explicit `moon run` too — it would answer "No tasks found" and exit 1. The script resolves
+      # its own base ref from GITHUB_BASE_REF, so it needs no moon-provided context. A PR touching
+      # no liftable package exits 0 having extracted nothing.
+      - name: extract-module (changed modules)
+        run: bun tools/extract-module/src/extract-changed.ts
+        env:
+          CI: 'true'
+
+  docs-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Read the Bun version pin from .moon/toolchains.yml
+        id: bun-pin
+        run: |
+          version=$(grep -A1 '^bun:' .moon/toolchains.yml | tail -1 | sed -E "s/^[[:space:]]*version:[[:space:]]*['\"]?([^'\"]+)['\"]?[[:space:]]*\$/\1/")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ steps.bun-pin.outputs.version }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: docs-check
+        run: bun moon run root:docs-check
+
+      - name: telemetry-map
+        run: bun moon run root:telemetry-map
+
+  gate-integrity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Read the Bun version pin from .moon/toolchains.yml
+        id: bun-pin
+        run: |
+          version=$(grep -A1 '^bun:' .moon/toolchains.yml | tail -1 | sed -E "s/^[[:space:]]*version:[[:space:]]*['\"]?([^'\"]+)['\"]?[[:space:]]*\$/\1/")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ steps.bun-pin.outputs.version }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: gate-integrity
+        run: bun moon run root:gate-integrity

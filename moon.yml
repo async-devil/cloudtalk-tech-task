@@ -1,12 +1,178 @@
-# Repo-wide gates live on the root project, never duplicated per module. Task ids added here must
-# also be added to `tools/arch-checks/required-gates.json` in the same change — `gate-integrity`
-# fails the build on a gate that was renamed away or commented out.
+id: root
 language: typescript
 layer: tool
 
 tags:
   - tier-tooling
 
+# Repo-wide gates live on the root project, never duplicated per module. A task id added here must
+# also be added to `tools/arch-checks/required-gates.json` in the same change when it becomes a CI
+# job — `gate-integrity` fails the build on a gate that was renamed away or commented out. That
+# anti-hollowing structure is ADR-0010's, and it exists because a gate quietly removed is
+# indistinguishable from a gate that always passes.
 tasks:
+  # Anchor task, so the pipeline is never empty and `moon ci` on a tree with no projects still has
+  # something to run.
   workspace-ok:
     command: 'echo workspace-ok'
+    options:
+      cache: false
+
+  # The boundary law (ADR-0001). `depcruise` errors on a directory argument that does not exist, so
+  # the roots are passed by a wrapper that only names the ones present on disk.
+  #
+  # `inputs` MIRRORS the root `workspaces` globs the wrapper derives its scan roots from, and the
+  # root package.json is an input for that reason: adding a glob there changes what this task
+  # cruises, so it must also invalidate it.
+  depcruise:
+    command: 'bun'
+    args:
+      - 'tools/arch-checks/src/run-depcruise.ts'
+    inputs:
+      - '.dependency-cruiser.cjs'
+      - 'package.json'
+      - 'tools/arch-checks/src/module-registry.cjs'
+      - 'apps/**/*'
+      - 'packages/**/*'
+      - 'tools/**/*'
+      - '!**/node_modules/**'
+    options:
+      runInCI: true
+
+  # The boundary law's own proof: each fixture is a deliberate violation, and the gate is only
+  # trustworthy while every one of them is still reported. A rule that stops matching is otherwise
+  # indistinguishable from a codebase that stopped violating it.
+  depcruise-selftest:
+    command: 'bun'
+    args:
+      - 'tools/arch-checks/src/run-fixture-tests.ts'
+    inputs:
+      - '.dependency-cruiser.cjs'
+      - 'tools/arch-checks/**/*'
+    options:
+      runInCI: true
+
+  # Every non-dependency-cruiser checker, run against its own red and green fixtures.
+  arch-checks-selftest:
+    command: 'bun'
+    args:
+      - 'tools/arch-checks/src/selftest.ts'
+    inputs:
+      - 'tools/arch-checks/**/*'
+    options:
+      runInCI: true
+
+  # The documentation contract (docs/README.md is generated; the records must satisfy their schema).
+  docs-check:
+    command: 'bun'
+    args:
+      - 'tools/arch-checks/src/docs-index.ts'
+    inputs:
+      - 'docs/**/*'
+      - 'tools/arch-checks/src/docs-index.ts'
+    options:
+      runInCI: true
+
+  # ADR-0010's anti-hollowing check: every job id in required-gates.json still exists in the
+  # workflow that is supposed to run it.
+  gate-integrity:
+    command: 'bun'
+    args:
+      - 'tools/arch-checks/src/gate-integrity.ts'
+    inputs:
+      - '.github/workflows/**/*'
+      - 'tools/arch-checks/required-gates.json'
+      - 'tools/arch-checks/src/gate-integrity.ts'
+    options:
+      runInCI: true
+
+  # ADR-0009: logging goes through the facade. `console` outside a designated boundary file means
+  # a log line with no trace context, which is a log line nobody can join to anything.
+  no-core-logging:
+    command: 'bun'
+    args:
+      - 'tools/arch-checks/src/no-core-logging.ts'
+    inputs:
+      - 'packages/**/*'
+      - 'apps/**/*'
+      - '!**/node_modules/**'
+      - 'tools/arch-checks/src/no-core-logging.ts'
+    options:
+      runInCI: true
+
+  # ADR-0003: `any` and `@ts-ignore` need a written constraint at the site. This reports the ones
+  # that carry none — it does not ban them, because a blanket ban produces worse casts.
+  unjustified-any-gate:
+    command: 'bun'
+    args:
+      - 'tools/arch-checks/src/unjustified-any-gate.ts'
+    inputs:
+      - 'packages/**/*'
+      - 'apps/**/*'
+      - '!**/node_modules/**'
+      - 'tools/arch-checks/src/unjustified-any-gate.ts'
+    options:
+      runInCI: true
+
+  # ADR-0002: ESM only for shipped code. A CommonJS entry in an `exports` map is how a package
+  # silently acquires a dual-format surface nobody chose.
+  no-cjs-exports-map:
+    command: 'bun'
+    args:
+      - 'tools/arch-checks/src/no-cjs-exports-map.ts'
+    inputs:
+      - 'packages/*/package.json'
+      - 'apps/*/package.json'
+      - 'tools/arch-checks/src/no-cjs-exports-map.ts'
+    options:
+      runInCI: true
+
+  # ADR-0006 and ADR-0011: migrations are append-only, sequentially indexed, and follow the naming
+  # and DDL conventions. Checked statically, so it costs no database.
+  migration-ddl:
+    command: 'bun'
+    args:
+      - 'tools/arch-checks/src/migration-ddl.ts'
+    inputs:
+      - 'packages/persistence/migrations/**/*'
+      - 'tools/arch-checks/src/migration-ddl.ts'
+    options:
+      runInCI: true
+
+  # ADR-0009: every emitted span and instrument is listed in its module's README, and every listed
+  # name is actually emitted. Both directions, because a README that over-claims is as misleading
+  # as one that under-claims.
+  telemetry-map:
+    command: 'bun'
+    args:
+      - 'tools/arch-checks/src/telemetry-map.ts'
+    inputs:
+      - 'packages/**/*'
+      - 'apps/**/*'
+      - '!**/node_modules/**'
+      - 'tools/arch-checks/src/telemetry-map.ts'
+    options:
+      runInCI: true
+
+  # ADR-0001 point 3, the module autonomy proof. `runInCI: false` deliberately: it resolves changed
+  # modules against the default branch, and a local `moon ci` with no fetched origin/main must not
+  # fail for a reason unrelated to the code. CI supplies that precondition itself (a full-history
+  # checkout) and runs the script directly.
+  extract-module-changed:
+    command: 'bun'
+    args:
+      - 'tools/extract-module/src/extract-changed.ts'
+    options:
+      runInCI: false
+      cache: false
+
+  # The extraction proof's own proof: a fixture module with an undeclared workspace import must
+  # FAIL extraction. That failure is half the tool's value, so it gets a test of its own.
+  extract-module-selftest:
+    command: 'bun'
+    args:
+      - 'tools/extract-module/src/selftest.ts'
+    inputs:
+      - 'tools/extract-module/**/*'
+    options:
+      runInCI: true
