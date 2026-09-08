@@ -1,0 +1,13 @@
+language: typescript
+layer: tool
+
+tags:
+  - tier-tooling
+
+# `layer: tool` is deliberately excluded from `.moon/tasks/all.yml`'s `inheritedBy.layers`, so this
+# project gets none of the shared lint/typecheck/build/test defaults. `typecheck` is declared here
+# explicitly — the same command the inherited default would have used — so `moon ci` still proves
+# this package's TypeScript is strict-clean. Repo-wide gate tasks live on the root project.
+tasks:
+  typecheck:
+    command: 'tsc --noEmit'
