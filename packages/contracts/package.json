@@ -1,0 +1,19 @@
+{
+  "name": "@repo/contracts",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@orpc/contract": "1.14.8",
+    "zod": "4.4.3",
+    "@repo/kernel": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "4.1.10"
+  }
+}
