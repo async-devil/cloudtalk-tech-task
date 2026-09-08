@@ -1,0 +1,1 @@
+Not a migration — proves non-`NNNN-*.ts|js` entries are ignored by the folder merge.
