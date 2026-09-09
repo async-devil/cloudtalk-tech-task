@@ -34,7 +34,11 @@ updateProduct(db: Kysely<unknown>, input: UpdateProductInput): Promise<ProductRe
 
 submitReview(db: Kysely<unknown>, input: SubmitReviewInput): Promise<SubmitReviewResult>;
 
-recomputeProductRating(db: Kysely<unknown>, productId: string): Promise<ProductRatingRecord>;
+recomputeProductRating(
+  db: Kysely<unknown>,
+  productId: string,
+  options?: RecomputeProductRatingOptions,   // { outboxRowCreatedAt?: Date } — lag input only
+): Promise<ProductRatingRecord>;
 rebuildProductRating(
   db: Kysely<unknown>,
   options?: RebuildProductRatingOptions,
@@ -70,7 +74,7 @@ overturns SPEC-0002's rule.
 | `@repo/entities` | `PRODUCT_CATEGORY`/`REVIEW_MODERATION_STATE` (the two reference vocabularies this module resolves ids against) and `TOKEN_PREFIX`/`mintToken` (a submitted review's `rev_…` token). |
 | `@repo/jobs` | `insertOutboxRows`/`OutboxTableRef` — the sanctioned Tier-2 edge (`tools/arch-checks/src/module-registry.cjs`): the outbox producer must run inside the domain write's own transaction (ADR-0007 step 6), so it cannot be lifted to a composition root. |
 | `@repo/kernel` | The typed error taxonomy — `ConflictError`, `NotFoundError`, `ValidationError`, `InternalError` (ADR-0008). |
-| `@repo/observability` | `createModuleObservability` — the one facade this module's four spans go through (ADR-0009). |
+| `@repo/observability` | `createModuleObservability`/`METRIC_ATTRIBUTE` — the one facade this module's four spans and two instruments (`recomputeProductRating`'s counter and histogram, TASK-0005) go through (ADR-0009). |
 | `@repo/persistence` | `rowAs`/`rowsAs` — the sanctioned Tier-2 edge, the same reason `jobs` and `auth` have it: every row this module reads comes back through a parse boundary, never a cast (ADR-0004). |
 
 Deliberately absent: `pg` (a provider SDK; concrete adapters live only in `apps/*/src/runtime/**`
@@ -115,9 +119,9 @@ Unit-proved now, against no database:
   `REVIEW_MODERATION_STATE` themselves — a renumbering of either vocabulary breaks this test
   structurally instead of leaving it green by construction. Test: `test/reference-ids.test.ts`.
 
-Container-proved (TASK-0002's acceptance criteria; `test-integration/`, written against this
-package's `vitest.integration.config.ts` by the engineer following this one — not present in this
-change):
+Container-proved (`test-integration/`, written against this package's
+`vitest.integration.config.ts` — TASK-0002's acceptance criteria proved by the engineer preceding
+this one, TASK-0005's by this change):
 
 - **INV-4** — Submitting a review writes the review row and its outbox row in the SAME
   transaction: no committed review is ever missing its scheduled recomputation (ADR-0007 step 5,
@@ -131,13 +135,38 @@ change):
 - The DB-side half of INV-3's parity claim — that `PRODUCT_CATEGORY`/`REVIEW_MODERATION_STATE` and
   the seeded `reference.*` rows are one thing, not merely that this module's own lookups agree
   with themselves — is `test-integration/reference-parity.test.ts`, already named by SPEC-0002.
+- **INV-7** — Replaying a delivered outbox row (redelivered via a status flip back to `Pending`,
+  the honest simulation of at-least-once delivery) leaves `product_rating` identical apart from a
+  strictly-later `computed_at` (SPEC-0004, TASK-0005). Test:
+  `test-integration/outbox-relay-durability.test.ts`.
+- **INV-8** — Killing the relay process mid-recompute (a real `SIGKILL` against a real `bun`
+  process, not a mocked rejection) and restarting it converges `product_rating` to the value an
+  independent aggregate over `reviews.review` gives, regardless of what the killed attempt did or
+  did not durably write — the property ADR-0007's machinery exists to buy (TASK-0005's Notes). Test:
+  `test-integration/outbox-relay-durability.test.ts`.
+- **INV-9** — Flushing Redis entirely loses no work: the pending outbox row survives in Postgres
+  untouched, and re-registering the repeatable schedule against the flushed Redis (what the
+  composition root does on every boot) drains it (SPEC-0004). Test:
+  `test-integration/outbox-relay-durability.test.ts`.
+- **INV-10** — A row whose `apply` always throws parks `dead` after exactly `maxAttempts` and is
+  never retried again (ADR-0007). Test: `test-integration/outbox-relay-durability.test.ts` — this
+  test does NOT prove the `jobs.dead_letter` triage write SPEC-0004 also describes for a parked
+  row; that half is implemented and proved separately, at the API composition root
+  (`apps/api/src/runtime/reviews-rating-worker.ts`), which this package cannot depend on (ADR-0001
+  tier order) and therefore cannot exercise from here — see that file's own doc comment.
+- **INV-11** — `reviews.rating.lag` records a value for every outbox row a relay pass applies
+  (measured, not assumed — SPEC-0004), and both `reviews.rating.recompute` and `reviews.rating.lag`
+  carry only `outcome` (SPEC-0004, ADR-0009 cardinality budget). Test:
+  `test-integration/outbox-relay-durability.test.ts`.
 
 ## Telemetry
 
-Source records: [ADR-0009](../../docs/adr/ADR-0009-observability-through-a-facade.md) and
-[TASK-0002](../../docs/tasks/TASK-0002-reviews-bounded-context.md).
+Source records: [ADR-0009](../../docs/adr/ADR-0009-observability-through-a-facade.md),
+[TASK-0002](../../docs/tasks/TASK-0002-reviews-bounded-context.md) and
+[TASK-0005](../../docs/tasks/TASK-0005-rating-aggregation-worker.md).
 
-<!-- Every emitted span maps to a line here; the telemetry-map gate enforces both directions. -->
+<!-- Every emitted span and instrument maps to a line here; the telemetry-map gate enforces both
+     directions. -->
 
 **Spans:**
 
@@ -146,14 +175,26 @@ Source records: [ADR-0009](../../docs/adr/ADR-0009-observability-through-a-facad
 - `reviews.product.create`
 - `reviews.product.update`
 - `reviews.rating.rebuild`
+- `reviews.rating.recompute` — attribute `productId` (an internal uuid; ids belong on spans, never
+  on a metric — ADR-0009 cardinality budget). Opened by every `recomputeProductRating` call,
+  whether the caller is the outbox relay's `apply` (TASK-0005, wired at `apps/api/src/runtime/`)
+  or `rebuildProductRating` recomputing one product at a time.
 
-**Instruments:** none. SPEC-0004 names two — a counter and a histogram, reviews.rating.recompute
-and reviews.rating.lag (named here in plain prose, without backticks, on purpose: this package
-emits neither of them, and the telemetry-map gate fails a README line that backtick-names
-something the module does not emit) — and assigns both to TASK-0005's outbox relay, not to this
-package. Created-vs-replayed is a per-request fact that belongs on this module's own span
-attribute, not on a metric, under ADR-0009's cardinality budget. Both instruments arrive with the
-worker in TASK-0005.
+**Instruments:**
+
+- `reviews.rating.recompute` — counter, attribute `outcome` (`success` | `error`). One `add` per
+  `recomputeProductRating` call, whichever way it settles; SPEC-0004's aggregation-lag pair.
+- `reviews.rating.lag` — histogram, unit `ms`, attribute `outcome` (`success` always — see below).
+  Ms from the delivering outbox row's `created_at` to the moment this recomputation's `computed_at`
+  commits (SPEC-0004): the number that answers "how stale can the average on the product page be",
+  measured rather than assumed. Recorded ONLY when the caller passes
+  `RecomputeProductRatingOptions.outboxRowCreatedAt` — the outbox relay's `apply` always does;
+  `rebuildProductRating` never does, because a rebuild has no outbox row and fabricating a lag
+  value (e.g. `0`) for it would misreport staleness rather than honestly recording none.
+
+Created-vs-replayed (`reviews.review.submit`'s own `outcome` attribute) stays a span attribute,
+not a metric, under ADR-0009's cardinality budget — the same reasoning that keeps a `productSlug`
+off `reviews.rating.recompute`'s counter.
 
 No `failSpan` and no `logger.error`/`logger.fatal`/`console.*` anywhere in this module: every
 pipeline here throws a typed error and handles nothing itself (ADR-0008) — the boundaries that
@@ -171,5 +212,9 @@ runtime coupling to lift.
 
 1. Copy `packages/reviews/` to the target repository.
 2. Vendor or re-add its five workspace deps and `bun install`.
-3. `tsc` build and `vitest run` must pass standalone; the Testcontainers `postgres:18` suite
-   (`vitest run --config vitest.integration.config.ts`) additionally needs Docker.
+3. `tsc` build and `vitest run` must pass standalone; the Testcontainers suite
+   (`vitest run --config vitest.integration.config.ts`) additionally needs Docker and now starts
+   BOTH `postgres:18` and `redis:8-alpine` (TASK-0005's outbox-relay durability proofs need a real
+   BullMQ-backed relay, not just Postgres) — `@opentelemetry/api` is a devDependency for the same
+   suite's live-meter assertion (`reviews.rating.lag` records a value), not a runtime dependency of
+   `src/`.

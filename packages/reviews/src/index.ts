@@ -9,8 +9,13 @@ export {
 } from './products.js';
 export {
   type ProductRatingRecord,
+  RATING_LAG_INSTRUMENT,
+  RATING_RECOMPUTE_INSTRUMENT,
+  RATING_RECOMPUTE_OUTCOME,
+  type RatingRecomputeOutcome,
   type RebuildProductRatingOptions,
   type RebuildProductRatingReport,
+  type RecomputeProductRatingOptions,
   rebuildProductRating,
   recomputeProductRating,
 } from './rating.js';

@@ -1,3 +1,4 @@
+import { METRIC_ATTRIBUTE } from '@repo/observability';
 import { rowsAs } from '@repo/persistence';
 import { type Kysely, sql } from 'kysely';
 import { obs } from './internal/observability.js';
@@ -11,17 +12,87 @@ import { productIdRowSchema } from './internal/rows.js';
  * — see `internal/rows.ts`'s `productRatingRowSchema` doc and this module's README for why. */
 export type ProductRatingRecord = ProductRatingRow;
 
+/** `recomputeProductRating`'s outcome vocabulary, as a const-object value set (ADR-0003) — the
+ * `outcome` value recorded on both `RATING_RECOMPUTE_INSTRUMENT` and `RATING_LAG_INSTRUMENT`. */
+export const RATING_RECOMPUTE_OUTCOME = {
+  Success: 'success',
+  Error: 'error',
+} as const;
+export type RatingRecomputeOutcome =
+  (typeof RATING_RECOMPUTE_OUTCOME)[keyof typeof RATING_RECOMPUTE_OUTCOME];
+
+/** `reviews.rating.recompute`: counter incremented once per `recomputeProductRating` call —
+ * exported (SPEC-0004, TASK-0005) so a test can assert its name/attributes without restating them,
+ * the same shape `packages/jobs/src/outbox.ts` exports `OUTBOX_RUN_INSTRUMENT` etc. */
+export const RATING_RECOMPUTE_INSTRUMENT = {
+  name: 'reviews.rating.recompute',
+  allowedAttributes: [METRIC_ATTRIBUTE.Outcome],
+} as const;
+const ratingRecomputeCounter = obs.createCounter(RATING_RECOMPUTE_INSTRUMENT);
+
+/** `reviews.rating.lag`: histogram of ms from the outbox row's `created_at` to the moment its
+ * recomputation commits (SPEC-0004) — recorded only when the caller supplies
+ * `outboxRowCreatedAt` (see {@link RecomputeProductRatingOptions}), since a rebuild has no outbox
+ * row and therefore no lag to honestly report. */
+export const RATING_LAG_INSTRUMENT = {
+  name: 'reviews.rating.lag',
+  unit: 'ms',
+  allowedAttributes: [METRIC_ATTRIBUTE.Outcome],
+} as const;
+const ratingLagHistogram = obs.createHistogram(RATING_LAG_INSTRUMENT);
+
+export interface RecomputeProductRatingOptions {
+  /**
+   * The delivering outbox row's `created_at` — needed to compute `reviews.rating.lag` (SPEC-0004:
+   * ms from the outbox row's creation to the moment THIS recomputation commits). An options
+   * object rather than a bare third positional `Date`, for two reasons: it keeps both existing
+   * two-argument call sites (this module's own ad hoc callers, and `rebuildProductRating` below)
+   * compiling unchanged, and it makes the omission self-documenting at the call site
+   * (`recomputeProductRating(db, id)` reads as "no outbox row", not as a forgotten argument).
+   * Optional: `rebuildProductRating` recomputes with no outbox row in hand at all, and fabricating
+   * a lag value (e.g. 0) for it would misreport staleness rather than honestly recording none.
+   */
+  readonly outboxRowCreatedAt?: Date;
+}
+
 /**
- * A thin public delegation to `applyRatingRecompute` — this function writes no SQL of its own, on
- * purpose, so SPEC-0004's recompute statement lives in exactly one place
- * (`internal/recompute-statement.ts`). TASK-0005 wires the outbox relay's `apply` to this
- * function and adds its span and instruments INSIDE it; nothing here anticipates that wiring.
+ * A thin public delegation to `applyRatingRecompute` for the actual SQL — SPEC-0004's recompute
+ * statement still lives in exactly one place (`internal/recompute-statement.ts`) — wrapped in this
+ * module's `reviews.rating.recompute` span/counter/histogram (ADR-0009, SPEC-0004, TASK-0005). The
+ * outbox relay's `apply` wires straight to this function (the composition root, `apps/api/src/
+ * runtime/`), passing the claimed row's `createdAt`; `rebuildProductRating` calls it too, with no
+ * `options` at all, so a rebuild still gets the span/counter but never a lag value.
  */
 export function recomputeProductRating(
   db: Kysely<unknown>,
   productId: string,
+  options: RecomputeProductRatingOptions = {},
 ): Promise<ProductRatingRecord> {
-  return applyRatingRecompute(db, productId);
+  return obs.withSpan('reviews.rating.recompute', async (span) => {
+    // Ids belong on spans, never on metric attributes (ADR-0009 cardinality budget) — this is the
+    // one place `productId` is worth attaching, since every other signal below is an aggregate.
+    span.setAttribute('productId', productId);
+    try {
+      const result = await applyRatingRecompute(db, productId);
+      ratingRecomputeCounter.add(1, { outcome: RATING_RECOMPUTE_OUTCOME.Success });
+      if (options.outboxRowCreatedAt !== undefined) {
+        const lagMs = Math.max(
+          0,
+          result.computedAt.getTime() - options.outboxRowCreatedAt.getTime(),
+        );
+        ratingLagHistogram.record(lagMs, { outcome: RATING_RECOMPUTE_OUTCOME.Success });
+      }
+      return result;
+    } catch (error) {
+      // NOT catch-log-rethrow (ADR-0008): no log call here, and the error propagates unchanged.
+      // The boundary that HANDLES this failure — decides retry vs. park, logs once — is
+      // `relayOutboxBatch` (`@repo/jobs`), not this function. Recording the outcome counter on the
+      // way through is telemetry, not handling: it never swallows, translates, or delays the
+      // throw, so it does not double the boundary's own `warn` log on eventual parking.
+      ratingRecomputeCounter.add(1, { outcome: RATING_RECOMPUTE_OUTCOME.Error });
+      throw error;
+    }
+  });
 }
 
 export interface RebuildProductRatingOptions {
@@ -62,7 +133,10 @@ export function rebuildProductRating(
   return obs.withSpan('reviews.rating.rebuild', async () => {
     if (options.productSlug !== undefined) {
       const productId = await resolveProductId(db, options.productSlug);
-      await applyRatingRecompute(db, productId);
+      // Through `recomputeProductRating`, not `applyRatingRecompute` directly, so a rebuild's
+      // recomputations carry the same span/counter as every other one — with no
+      // `outboxRowCreatedAt` (there is no outbox row here), so no lag is recorded (SPEC-0004).
+      await recomputeProductRating(db, productId);
       return { productsRecomputed: 1 };
     }
 
@@ -90,7 +164,7 @@ export function rebuildProductRating(
         break;
       }
       for (const row of page) {
-        await applyRatingRecompute(db, row.product_id);
+        await recomputeProductRating(db, row.product_id);
         productsRecomputed += 1;
       }
       cursor = page[page.length - 1]?.product_id;
