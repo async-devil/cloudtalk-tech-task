@@ -11,10 +11,14 @@ import {
   METRIC_ATTRIBUTE,
 } from '@repo/observability';
 
-/** ADR-0013's security baseline — frozen. Checked in this order, first applicable wins (one
- * limiter consultation per request). This product's session model has no tenant dimension
- * (ADR-0013), so the buckets below are keyed by client IP only: every `/api/auth/*` request, and
- * every POST carrying no resolved session. */
+/** The rate-limit bucket list, per the security baseline ADR-0018 currently states (restated
+ * unchanged from ADR-0013 via ADR-0017 — neither superseding record touches this list; ADR-0018 is
+ * the one to cite as its authority, not the twice-superseded ADR-0013). Checked in this order,
+ * first applicable wins (one limiter consultation per request). This product's session model has
+ * no tenant dimension (ADR-0013), so the buckets below are keyed by client IP only: every
+ * `/api/auth/*` request, and every POST carrying no resolved session. ADR-0019 extends this list
+ * with two more buckets (`anonymous-read`, `review-submission`); this file does not implement them
+ * yet. */
 export const RATE_LIMIT_BUCKET = {
   Auth: 'auth', // every /api/auth/* request, keyed by client IP
   UnauthenticatedPost: 'unauthenticated-post', // POST with no session, keyed by client IP

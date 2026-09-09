@@ -54,7 +54,7 @@ render decision is a courtesy.
   Derived, rebuildable, and eventually consistent (ADR-0014).
 - **Reviewer** — the app-owned user record (`auth.app_user`), identified publicly by a `usr_…`
   token. It has an email and no profile; a review displays its author as a stable non-identifying
-  label (see Open question 3).
+  label, derived from that email and never the email itself (see Open question 1).
 
 ### The rules the product is
 
@@ -319,9 +319,18 @@ Each names the seam it would use, so "later" means "extend", not "rework":
 
 ## Open questions
 
-1. **Author display name.** `auth.app_user` has no display name and `auth.identity.name` is
-   better-auth's. Proposal: display a derived, stable label (the email's local part, truncated) and
-   never the email itself; a real profile is a later addition. Needs a decision before S3 is built.
+1. **Author display name — resolved.** `auth.app_user` has no display name and `auth.identity.name`
+   is better-auth's, so `authorLabel` (SPEC-0003 `reviewSummary.authorLabel`) is derived at read
+   time rather than stored: take `auth.identity.email`'s LOCAL PART — the substring before the
+   first `@` — trim surrounding whitespace, and truncate to at most 24 characters, taken verbatim
+   with no ellipsis (a label is a fixed display value, not a preview of something longer; 24
+   characters is comfortably longer than a typical local part and short enough that a review card's
+   byline never wraps). If nothing is left after trimming — an email with no local part worth
+   showing — the label falls back to the literal string `Reviewer` rather than an empty string. The
+   derivation is a pure function of the stored email, so the same author always renders the same
+   label, and **the email itself never crosses the wire in any form** — only this derived label
+   does. A real profile (a reviewer-chosen display name) is a later addition that would replace this
+   derivation, not extend it.
 2. **Deletion semantics.** Hard delete is specified (rule 5). If reviews later need retention for
    moderation, that becomes a state transition rather than a `DELETE`, and the lifecycle registry
    entry changes with it (SPEC-0002).
