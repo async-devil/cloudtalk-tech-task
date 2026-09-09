@@ -138,8 +138,11 @@ from the `@repo/entities` consts, and creates `jobs.dead_letter`. Runs after
 
 ## Telemetry
 
-<!-- Every emitted span/instrument maps to a line here; the telemetry-map gate enforces both
-     directions (against src/ and against the source spec linked below). -->
+Source records: [ADR-0007](../../docs/adr/ADR-0007-jobs-transport-and-durability-spine.md) and
+[ADR-0009](../../docs/adr/ADR-0009-observability-through-a-facade.md).
+
+<!-- Every emitted span and instrument maps to a line here; the telemetry-map gate enforces both
+     directions — against src/ and against the records linked above. -->
 
 **Spans:** none. The spine's units of work run under spans opened elsewhere — worker stages under
 messaging's runtime-named `jobs.{pipeline}.{stage}` spans, relay/reconciler passes under their

@@ -60,7 +60,7 @@ Postgres with full OpenTelemetry, plus a React SPA. Start with [README.md](READM
 bun install
 bun moon ci                      # the full local gate chain
 bun moon run <project>:test      # or :build, :dev, :typecheck
-bun run extract-module <name>    # the module autonomy proof
+bun run extract-module <name>    # the module autonomy proof (--all for every module)
 bun run docs-index -- --write    # regenerate docs/README.md after touching a record
 ```
 
