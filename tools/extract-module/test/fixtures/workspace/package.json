@@ -1,0 +1,10 @@
+{
+  "name": "workspace-fixture-root",
+  "private": true,
+  "//": "Fixture repo root for discoverWorkspace. The `workspaces` globs are load-bearing, not decoration: workspace.ts DERIVES the roots it walks from them, so this file is what makes the fixture a repo root rather than three loose directories. Drop `tools/*` here and the pkg-c assertions in src/selftest.ts go red.",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "tools/*"
+  ]
+}

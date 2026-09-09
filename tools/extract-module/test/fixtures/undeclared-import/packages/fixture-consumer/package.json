@@ -1,0 +1,8 @@
+{
+  "name": "@repo/fixture-consumer",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "//": "Deliberately declares NO dependency on @repo/fixture-dep, even though src/index.ts imports it. discoverWorkspace/transitiveClosureInBuildOrder only ever see workspace:* entries in this file, so this import travels invisibly right up until the extracted copy's own tsc build tries to resolve it — which is where the extraction proof must fail."
+}

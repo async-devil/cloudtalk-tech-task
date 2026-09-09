@@ -1,0 +1,10 @@
+{
+  "name": "@repo/pkg-b",
+  "version": "0.0.0",
+  "dependencies": {
+    "@repo/pkg-a": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "4.1.10"
+  }
+}
