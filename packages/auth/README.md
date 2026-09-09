@@ -79,9 +79,13 @@ that owns the data, filtered on `session.userId`.
 
 ## Telemetry
 
+Source records: [ADR-0013](../../docs/adr/ADR-0013-authentication-and-security-baseline.md) and
+[ADR-0009](../../docs/adr/ADR-0009-observability-through-a-facade.md).
+
 Spans:
 
 - `auth.session.resolve` — one per session resolution; carries `appUserId`, never an email.
+- `auth.retention.run` — one per retention pass over the expired credential rows.
 - `auth.user.provision-hook` — the awaited session-create hook that ensures the app-owned user row.
 
 Instruments:

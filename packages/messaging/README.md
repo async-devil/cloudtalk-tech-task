@@ -130,6 +130,8 @@ has no `@repo/contracts` dependency. Dev-only:
 
 ## Telemetry
 
+Source record: [ADR-0009](../../docs/adr/ADR-0009-observability-through-a-facade.md).
+
 <!-- Every emitted span/instrument maps to a line here; the telemetry-map gate enforces both
      directions (against src/ and against the source specs linked below). -->
 
@@ -147,7 +149,6 @@ identity requires, so success and failure paths cannot drift apart):
 | `messaging.event.handle` | counter | Queue, Outcome | consume side, one tick per delivered event per handler; Queue = event type; `completed` / `terminal` (no `RetryScheduled` — the bus never retries) |
 | `messaging.event.publish` | counter | Queue, Outcome | produce side; Queue = event type; `completed` / `terminal` |
 | `messaging.job.execute` | counter | Queue, Outcome | one tick per job attempt; the success path and both failure paths share this instrument and dimension set by construction |
-| `messaging.budget.denied` | counter | Queue | One tick per exhausted `authorizeSpend` call; Queue is the spend category (ADR-0013) |
 
 A delivered event whose envelope fails to parse records the bounded literal `unknown` as its
 Queue — never a raw wire value (ADR-0009: bounded enums only).

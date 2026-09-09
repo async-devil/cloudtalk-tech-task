@@ -31,8 +31,10 @@ sign-in flow. Deployment beyond local Compose. Any production mail transport (AD
 - [ ] `GET /health` and `GET /health/worker` return 200 with the api running in `test` mode and no
       secrets configured.
 - [ ] A magic-link sign-in completes end to end against the development mail adapter.
-- [ ] `bun run extract-module --matrix` reports pass for every package; `styles` reports
-      `pass (build-only)`.
+- [ ] `bun run extract-module --all` reports pass for every package. `contracts` reports
+      `pass (build-only)` — it ships types and has no runtime suite. On a host without `node-gyp`,
+      `messaging`, `jobs` and `auth` fail at dependency install rather than at extraction; that is
+      an environment gap, not a boundary violation, and CI has the build tools.
 - [ ] `moon run root:arch-checks-selftest` passes, and every gate's red fixture is red when its
       checker runs against it.
 - [ ] `bun run docs-index` is clean, and running it with `--write` twice produces no diff.

@@ -57,7 +57,7 @@ Start with these three; the rest of [`docs/adr/`](docs/README.md) fills in aroun
 
 - **[ADR-0001](docs/adr/ADR-0001-modular-monolith-of-bounded-contexts.md)** — why a modular
   monolith, and why module independence is proven by CI rather than asserted. `bun run
-  extract-module --matrix` copies each module out of the repository with only its declared
+  extract-module --all` copies each module out of the repository with only its declared
   dependencies and builds and tests it standing alone. An undeclared import fails the run, which is
   half the tool's value.
 - **[ADR-0014](docs/adr/ADR-0014-rating-aggregation-as-a-projection.md)** — the domain decision. A
@@ -103,6 +103,14 @@ Stated plainly, because a reviewer will find them anyway:
   later is a migration and a change to every scoped query — a deliberate bet, argued in ADR-0013.
 - **Client-rendered.** Nothing behind the router is indexable. Fine for an application behind a
   sign-in, a real constraint if a public catalogue later needs SEO.
+- **Three modules need build tools to extract.** `messaging`, `jobs` and `auth` carry
+  `testcontainers` as a dev dependency, which pulls a transitive native module (`cpu-features`)
+  whose install script needs `node-gyp`. Without it `bun run extract-module <one of those>` fails
+  at install — not at the boundary the proof is about. The other seven modules extract, build and
+  test standing alone on a bare machine.
+- **The container suites need Docker.** Without a reachable daemon `moon ci` skips them loudly and
+  says so; in CI their absence is a hard failure, because a durability proof that did not run must
+  never read as one that passed.
 
 ## Contributing
 
