@@ -2,7 +2,7 @@
 id: TASK-0008
 title: Catalogue authoring — product creation and editing behind a capability
 status: draft
-adr: [ADR-0016, ADR-0017]
+adr: [ADR-0016, ADR-0018]
 date: 2026-09-09
 ---
 
@@ -21,7 +21,7 @@ SPEC-0003 (`products.create`, `products.update`, the bootstrap field).
 ## Out of scope
 
 Product deletion or retirement. A screen for granting the capability — it is set by seed or by hand
-(ADR-0017). Bulk import. Product images. Category management: the categories are a seeded vocabulary.
+(ADR-0018). Bulk import. Product images. Category management: the categories are a seeded vocabulary.
 
 ## Acceptance criteria
 

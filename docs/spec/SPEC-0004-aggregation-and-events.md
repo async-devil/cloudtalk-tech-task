@@ -3,7 +3,7 @@ id: SPEC-0004
 title: Aggregation and events — the outbox, the relay, and the rating projection
 status: draft
 supersedes: []
-adr: [ADR-0007, ADR-0009, ADR-0014]
+adr: [ADR-0007, ADR-0009, ADR-0014, ADR-0018]
 date: 2026-09-09
 ---
 
@@ -38,7 +38,8 @@ SPEC-0002 alongside the rest of the schema.
 
 ### The event
 
-One operation, emitted by all three write paths:
+One operation, emitted by every write path that changes which reviews count toward a product's
+aggregate — submission, edit, delete, and the two moderation transitions (ADR-0018):
 
 | Field | Value |
 |---|---|
@@ -48,8 +49,16 @@ One operation, emitted by all three write paths:
 
 The payload is empty on purpose. A recomputation reads the authoritative table; anything carried in
 the payload would be a second, staler copy of what the worker is about to read, and the moment it
-disagreed the projection would take the payload's word for it. Submission, edit and deletion all emit
-the identical event: the aggregate does not care what changed, only which product changed.
+disagreed the projection would take the payload's word for it. Submission, edit, deletion, reject and
+restore all emit the identical event: the aggregate does not care what changed, only which product
+changed.
+
+**Reject and restore are aggregate-affecting writes, not a side channel.** The recompute statement
+below already filters `WHERE review_moderation_state_id = 1` (`published`); rejecting a review moves
+it out of that filter and restoring moves it back in, so both change the product's `review_count` and
+`rating_average` exactly as a delete or a fresh submission would. `reviews.reject` and
+`reviews.restore` (SPEC-0003) insert the outbox row in the same transaction as the state `UPDATE`,
+the same six-step shape below describes for submission.
 
 **Creating a product emits nothing.** There is no review to aggregate, so no recomputation is owed
 and no `product_rating` row exists — which is why every catalogue read joins the projection `LEFT`
@@ -106,8 +115,9 @@ ON CONFLICT (product_id) DO UPDATE
   dropped wholesale by a rebuild.
 - `computed_at` moves on every application, including one that changes no other column. The UI's
   staleness line is a claim about when the number was *checked*, not when it last *changed*.
-- Only `published` reviews count, so the moderation state that nothing can set yet is already
-  respected by the projection.
+- Only `published` reviews count. A rejected review's rating and count vanish from the aggregate
+  the same recomputation cycle as its removal from the review list (ADR-0018) — there is no separate
+  path for "the number" versus "the list" to disagree on what a moderator just did.
 
 **Failure handling is the relay's, not the worker's.** A throw from `apply` increments `attempts` and
 records `last_error`; at `maxAttempts` the row is parked `dead` and a `jobs.dead_letter` row is
@@ -214,3 +224,4 @@ machinery is paid for at all:
 | Durability tests against real containers | ADR-0010 | TASK-0005 |
 | Staleness the UI displays | ADR-0014 | TASK-0004 |
 | No event on product creation; the `LEFT JOIN` that follows | ADR-0014 | TASK-0008 |
+| Reject/restore emit the recompute event; the filter that makes it matter | ADR-0014, ADR-0018 | TASK-0009 |

@@ -3,7 +3,7 @@ id: SPEC-0001
 title: The product — actors, rules, journeys and screens
 status: draft
 supersedes: []
-adr: [ADR-0012, ADR-0014, ADR-0016, ADR-0017]
+adr: [ADR-0012, ADR-0014, ADR-0016, ADR-0018]
 date: 2026-09-09
 ---
 
@@ -16,12 +16,13 @@ document defines it: what a person can do, what the system refuses, and what eac
 it is loading, empty, failing, or signed out.
 
 What already exists and is not re-specified here: magic-link sign-in and the session model
-(ADR-0017, `packages/auth`), the SPA shell, its router, guards and the sign-in screen
+(ADR-0018, `packages/auth`), the SPA shell, its router, guards and the sign-in screen
 (`apps/app/src/features/sign-in/`), and the design tokens and primitives in `packages/styles`.
 
 The scope is the brief's, plus the seams for what comes after. A review site's full surface —
-moderation, helpfulness votes, verified purchase, images, seller replies — is named at the end of the
-Specification with the seam each would use, and is deliberately not built.
+helpfulness votes, verified purchase, images, seller replies — is named at the end of the
+Specification with the seam each would use, and is deliberately not built. Moderation is not one of
+those: it is specified below.
 
 ## Specification
 
@@ -30,17 +31,15 @@ Specification with the seam each would use, and is deliberately not built.
 | Actor | How the system knows them | What they may do |
 |---|---|---|
 | Visitor | No session cookie | Browse the catalogue, open a product, read reviews |
-| Reviewer | A resolved session (ADR-0017) | Everything a visitor may do, plus submit, edit and delete **their own** review |
+| Reviewer | A resolved session (ADR-0018) | Everything a visitor may do, plus submit, edit and delete **their own** review |
 | Catalogue manager | A session whose user holds `catalogue_manager` | Everything a reviewer may do, plus create and edit catalogue products |
+| Moderator | A session whose user holds `moderator` | Everything a reviewer may do, plus reject a review and restore a rejected one |
 
-The catalogue manager is a capability on a reviewer, not a separate kind of account: the same person
-writes reviews. There is no admin area — the authoring actions live on the catalogue and product
-screens where the products are, and the capability decides whether they render.
-
-There is no moderator actor in v1. A review carries a moderation state
-(`reference.review_moderation_state`, SPEC-0002) and nothing can change it: the state exists so the
-read path already filters on it, which is what makes moderation an added screen later rather than a
-migration and a rewritten query. A role column on `auth.app_user` is the seam.
+Both capabilities are flags on a reviewer, not a separate kind of account: the same person writes
+reviews, and holding one capability implies nothing about the other (ADR-0018). There is no admin
+area — the authoring and moderation actions live on the screens where their subjects are, and the
+capability decides whether they render. The server is what actually refuses either action; the
+render decision is a courtesy.
 
 ### Domain objects
 
@@ -49,7 +48,8 @@ migration and a rewritten query. A role column on `auth.app_user` is the seam.
   (`AUD-WH1000XM5`). Both are unique and neither changes after creation (ADR-0016). Created by a
   catalogue manager in the app, and seeded for a fresh checkout (TASK-0006).
 - **Review** — one reviewer's rating (1–5) with a title and a body, attached to one product.
-  Identified publicly by a `rev_…` token.
+  Identified publicly by a `rev_…` token. Carries a moderation state (`published` or `rejected`
+  in v1 — see rule 5 below); only a `published` review appears on any read.
 - **Rating aggregate** — a product's average rating and review count, with the time it was computed.
   Derived, rebuildable, and eventually consistent (ADR-0014).
 - **Reviewer** — the app-owned user record (`auth.app_user`), identified publicly by a `usr_…`
@@ -71,11 +71,24 @@ migration and a rewritten query. A role column on `auth.app_user` is the seam.
 7. Deleting a review removes the row. The aggregate follows on the next recomputation.
 8. A submitted review is visible to its author immediately, because the review list reads the
    authoritative table (ADR-0014).
-9. The aggregate may lag. Every place it appears also says when it was computed. **The UI never
+9. Only a moderator may reject a review or restore a rejected one (ADR-0018). The screens hide what
+   a person cannot do; the server refuses it regardless — the same shape as rule 4.
+10. Moderation is post-publication and reversible: a review is `published` on submission and stays
+    visible until a moderator rejects it; a rejection can be undone by restoring it. Rejecting or
+    deleting a review are different operations with different consequences — deletion is the
+    author's own act on their own row and destroys it; rejection is a moderator's act on anyone's
+    row and can be reversed.
+11. A rejected review is excluded from every scoped read: the product's review list, the author's
+    own-review lookup on product detail, and the rating aggregate. It is not deleted, and it
+    reappears exactly as it was the moment it is restored.
+12. Rejecting or restoring a review changes which reviews count toward the product's aggregate, so
+    the transition recomputes it the same way a submission does (SPEC-0004) — moderation is a write
+    to the authoritative table, not a side channel the projection can miss.
+13. The aggregate may lag. Every place it appears also says when it was computed. **The UI never
    computes an average locally to hide the lag** — showing a number that is about to change is worse
    than showing one that is honestly a moment old.
-10. A product with no reviews has no average. The UI shows "No reviews yet", never `0.0`.
-11. Reading is anonymous. Writing requires a session, and an anonymous write is answered `401` before
+14. A product with no reviews has no average. The UI shows "No reviews yet", never `0.0`.
+15. Reading is anonymous. Writing requires a session, and an anonymous write is answered `401` before
    it reaches any pipeline.
 
 ### Journeys
@@ -107,6 +120,10 @@ same form with slug and SKU shown but not editable, each with the reason beside 
 *Edit* action, not a submission form. If a stale client submits anyway, the `CONFLICT` answer is
 rendered as "You have already reviewed this product" with a link to their review — a typed answer
 turned into a route, not an error toast.
+
+**J7 — moderate a review.** Moderation screen → filterable list of reviews → *Reject* on a
+`published` row moves it to `rejected` and it drops out of the list a visitor sees for that product;
+*Restore* on a `rejected` row reverses it. Both actions recompute the product's rating (SPEC-0004).
 
 ### Screens
 
@@ -154,6 +171,8 @@ Replaces today's placeholder home route (`apps/app/src/routes/index.tsx`).
   *Edit* and *Delete*. When they do not, the *Write a review* action opens S4 in place.
 - **Review list:** rating, title, body, author label, submitted date, an "edited" marker when
   `updated_at` differs from `created_at`. Ordered newest first. Cursor-paginated with *Load more*.
+  Only `published` reviews appear (rule 11) — there is no "removed" placeholder in the list; a
+  rejected review's slot simply closes up, the same as a deleted one.
 - **States:** *loading* — header skeleton, then list skeleton, so the product renders before its
   reviews; *unknown token* — the 404 screen (S6), not an empty product; *no reviews* — "Be the first
   to review this product" with the submit action; *list error while header succeeded* — the list
@@ -207,6 +226,29 @@ API returns `403` if the client tries anyway.
 - **Entry points:** *New product* on the catalogue (S2) and *Edit product* on product detail (S3),
   both rendered only for a manager.
 
+#### S8 — Review moderation (`/moderation`)
+
+Reachable only when the session bootstrap reports `canModerate`; a visitor who types the URL gets
+the same treatment as S7 — redirected, and refused server-side regardless.
+
+- **Reads:** a paginated, newest-first list of reviews across every product (`reviews.moderationList`
+  or equivalent — SPEC-0003), each row showing the product name and slug, the rating, title, body,
+  author label, submitted date, and current state (`published` / `rejected`).
+- **Filter:** a state filter defaulting to `published` — the working set a moderator reviews — with
+  `rejected` available to check past decisions. Not a "queue": nothing feeds this list
+  automatically in v1 (there is no reporting flow), so it is a browse-and-act surface over every
+  review, not an inbox.
+- **Actions:** *Reject* on a `published` row, *Restore* on a `rejected` row. Both are a single
+  click with no confirmation dialog — unlike S5's delete, the action is reversible, which is the
+  whole reason it does not need one. The row updates in place; no navigation.
+- **States:** *loading* — row skeletons; *empty* — "No reviews yet" (true only before any review
+  exists anywhere); *error* — the message-map copy with retry, scoped to the list.
+- **Keyboard:** the filter is a native control; each action is a button with an accessible name
+  that includes the product and review it acts on ("Reject review by A. Rivera on Sony WH-1000XM5"),
+  never a bare "Reject" repeated down the list.
+- **Entry point:** a link in the app's primary navigation, rendered only for a moderator — the same
+  affordance pattern as S7's *New product*.
+
 #### S6 — Not found and error boundary
 
 The existing router error boundary (`apps/app/test/router-error-boundary.test.tsx`) extended with a
@@ -236,6 +278,7 @@ Under `apps/app/src/features/`, one folder per user-facing feature, no slice imp
 | `product-detail` | The product header, aggregate display, review list and paging | S3 |
 | `review-submit` | The form, its draft persistence, submission and delete dialog | S4, S5 |
 | `catalogue-authoring` | The product form, slug derivation preview, create and edit mutations | S7 |
+| `moderation` | The review list, its state filter, and the reject/restore mutations | S8 |
 
 In `shared/`, because two slices need them: the message map, the query keys
 (`shared/query-keys`, derived from `apiQuery` — never hand-written literals), the API client
@@ -248,9 +291,11 @@ dependency (ADR-0012).
 
 ### Non-functional floors
 
-- **Accessibility:** the e2e accessibility pass covers S2, S3 and S4; the rating control is operable
-  by keyboard alone and announces its value; every interactive element has an accessible name; focus
-  is never lost after an action (submission focuses the new review, deletion focuses the list).
+- **Accessibility:** the e2e accessibility pass covers S2, S3, S4 and S8; the rating control is
+  operable by keyboard alone and announces its value; every interactive element has an accessible
+  name; focus is never lost after an action (submission focuses the new review, deletion focuses
+  the list, a reject/restore keeps focus on the row so a moderator can act down the list without
+  refinding their place).
 - **Latency budget on a seeded catalogue:** catalogue and product-detail reads answer in under 200 ms
   server-side, which the projection is what makes possible (ADR-0014).
 - **Aggregate staleness:** visible within seconds of a submission under normal operation; the number
@@ -262,14 +307,15 @@ Each names the seam it would use, so "later" means "extend", not "rework":
 
 | Not built | The seam it already has |
 |---|---|
-| Moderation queue and states | `reference.review_moderation_state` on every review + a role on `auth.app_user`; the read path already filters by state |
 | Helpfulness votes ("was this helpful?") | Its own table keyed by review and voter, and its own projection — the aggregation pattern is already proven by `product_rating` |
 | Verified-purchase badge | An orders context that does not exist; the badge is a column on the review, written by whatever proves the purchase |
 | Review images | An object-store port in `@repo/contracts` with a deterministic stub (ADR-0005) |
 | Seller replies | A second content table referencing the review; the same submission pipeline shape |
 | Reporting and abuse handling | An event on the messaging bus; no synchronous path needed |
 | Product deletion or retirement | A state column on the product row and a filtered read; the cascade SPEC-0002 already describes makes hard deletion the wrong default once a catalogue is real |
-| Granting the capability from a screen | `auth.app_user.catalogue_manager` is set by seed or by hand (ADR-0017); an admin screen for it is a surface with its own authorization question |
+| Granting either capability from a screen | Both are set by seed or by hand (ADR-0018); an admin screen for it is a surface with its own authorization question |
+| Reporting or flagging a review | An event on the messaging bus feeding the `pending` state ADR-0018 reserves and leaves unused; moderation today is browse-and-act, not an inbox |
+| A moderation audit trail (who rejected what, when) | A `reviews.moderation_event` table keyed by review, actor and transition; the current state is enough to specify, a history is not |
 
 ## Open questions
 
@@ -285,20 +331,29 @@ Each names the seam it would use, so "later" means "extend", not "rework":
    they sort last or are hidden is a product call, currently "last".
 5. **Draft persistence.** `sessionStorage` per product token is proposed (J3). A server-side draft
    would survive a device change and needs a table; not proposed for v1.
+6. **A rejected review, from its author's side.** Rule 11 removes it from the author's own-review
+   lookup along with everyone else's — so an author who was moderated sees "Write a review" again,
+   not an explanation. A softer answer (show it to the author only, marked rejected) reads kinder
+   and costs a scoping decision this document has not made: whether "own review" is one query or two
+   depending on who is asking. Deferred rather than guessed.
+7. **Bulk moderation.** S8 acts one row at a time. A catalogue-sized review volume may want
+   select-and-reject-many; not proposed until the one-at-a-time surface shows it is too slow.
 
 ## Traceability
 
 | Part of this specification | Constrained by | Implemented by |
 |---|---|---|
-| Actors, session requirement, the catalogue-manager capability | ADR-0017 | TASK-0003, TASK-0008 |
-| Domain objects, slug and SKU identity | ADR-0016, SPEC-0002 | TASK-0002, TASK-0008 |
-| Rules 1–2, 5–7 (rating, uniqueness, ownership) | ADR-0016 | TASK-0002, TASK-0003 |
-| Rules 3–4 (immutable address, who may author) | ADR-0016, ADR-0017 | TASK-0008 |
-| Rules 8–10 (visibility, staleness, no average) | ADR-0014 | TASK-0004, TASK-0005 |
-| Rule 11 (anonymous reads, 401 writes) | ADR-0017, ADR-0008 | TASK-0003 |
+| Actors, session requirement, both capabilities | ADR-0018 | TASK-0003, TASK-0008, TASK-0009 |
+| Domain objects, slug and SKU identity, review moderation state | ADR-0016, SPEC-0002 | TASK-0002, TASK-0008 |
+| Rules 1–2, 6–8 (rating, uniqueness, edit/delete) | ADR-0016 | TASK-0002, TASK-0003 |
+| Rules 3–4 (immutable address, who may author) | ADR-0016, ADR-0018 | TASK-0008 |
+| Rules 5, 9–12 (ownership, moderation) | ADR-0018 | TASK-0009 |
+| Rules 13–14 (staleness, no average) | ADR-0014 | TASK-0004, TASK-0005 |
+| Rule 15 (anonymous reads, 401 writes) | ADR-0018, ADR-0008 | TASK-0003 |
 | Journeys J1–J6 | ADR-0012 | TASK-0004, TASK-0008 |
+| Journey J7 and screen S8 | ADR-0012, ADR-0018 | TASK-0009 |
 | Screens S1–S6, slice map, primitives | ADR-0012 | TASK-0004 |
-| Screen S7 and the `catalogue-authoring` slice | ADR-0012, ADR-0017 | TASK-0008 |
+| Screen S7 and the `catalogue-authoring` slice | ADR-0012, ADR-0018 | TASK-0008 |
 | Error surface and message map | ADR-0008 | TASK-0004 |
 | Accessibility floors | ADR-0012, ADR-0010 | TASK-0004 |
 | Seeded catalogue the screens assume | ADR-0005 | TASK-0006 |

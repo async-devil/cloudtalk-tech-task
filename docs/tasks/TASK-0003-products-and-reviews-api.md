@@ -2,7 +2,7 @@
 id: TASK-0003
 title: The products and reviews API surface
 status: draft
-adr: [ADR-0004, ADR-0008, ADR-0017]
+adr: [ADR-0004, ADR-0008, ADR-0018]
 date: 2026-09-08
 ---
 
