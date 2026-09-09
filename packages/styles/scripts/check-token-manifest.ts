@@ -51,5 +51,5 @@ function main(): number {
 }
 
 if (import.meta.main) {
-  process.exit(main);
+  process.exit(main());
 }

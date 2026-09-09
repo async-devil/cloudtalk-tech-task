@@ -121,7 +121,7 @@ const TOKEN_FILES = [
  * - `--spacing-safe-*`: Tailwind DOES generate utilities here, and
  * registering them really did produce working `.pt-safe-top` rules — measured at. It also
  * produced the same self-reference (`--spacing-safe-top:var(--spacing-safe-top)` at byte ~3.2k
- * against the real `env` value at ~18.9k in the built stylesheet). Nicer class names were not
+ * against the real `env()` value at ~18.9k in the built stylesheet). Nicer class names were not
  * worth buying with a silent failure mode on the one quartet whose breakage — no notch padding —
  * is invisible in every desktop browser. They are spent through the v4 shorthand instead:
  * `pt-(--spacing-safe-top)`.
@@ -274,7 +274,7 @@ describe('design tokens (tokens/*.css)', () => {
     const themeStart = cleaned.indexOf('@theme');
     expect(rootStart).toBeGreaterThanOrEqual(0);
     expect(themeStart).toBeGreaterThanOrEqual(0);
-    // The `@theme` block must reference, not restate: every entry in it is a `var` indirection.
+    // The `@theme` block must reference, not restate: every entry in it is a `var()` indirection.
     const themeEntries = declarationsIn(themeBlock(cleaned, 'token file'));
     for (const { name, value } of themeEntries) {
       expect(value, `${name} restates a literal in @theme instead of referencing :root`).toContain(
@@ -360,7 +360,8 @@ describe('tokens/*.css ↔ token-scales.ts reconciliation', () => {
   it.each(SCALES)('$prefix names match exactly', ({ prefix, declared }) => {
     const inStylesheet = themeDeclarations
       .filter(({ name }) => name.startsWith(prefix) && !name.endsWith('--line-height'))
-      .map(({ name }) => name.slice(prefix.length)).sort;
-    expect(inStylesheet).toEqual([...declared].sort);
+      .map(({ name }) => name.slice(prefix.length))
+      .sort();
+    expect(inStylesheet).toEqual([...declared].sort());
   });
 });
