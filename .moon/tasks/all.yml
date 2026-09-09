@@ -35,8 +35,10 @@ tasks:
     command: 'vitest run'
     deps:
       - '^:build'
+  # Wrapped rather than invoked directly, so "no Docker" has one answer instead of seven: a loud
+  # local skip, a hard CI failure. See the script's header for why those two differ.
   test-integration:
-    command: 'vitest run --config vitest.integration.config.ts'
+    command: 'bun ../../tools/arch-checks/src/run-integration-suite.ts'
     deps:
       - '^:build'
     options:

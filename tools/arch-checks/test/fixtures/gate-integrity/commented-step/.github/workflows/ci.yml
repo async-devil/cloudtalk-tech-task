@@ -1,0 +1,23 @@
+# Fixture for gate-integrity.ts: a step inside `jobs:` has been commented out, the exact decay
+# mode ADR-0010 names. gate-integrity must flag this file.
+name: Fixture CI (commented step)
+
+on:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@0000000000000000000000000000000000000000
+      # - run: echo "this gate was silently disabled"
+      - run: echo ok
+
+  gate-integrity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@0000000000000000000000000000000000000000
+      - run: echo ok

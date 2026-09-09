@@ -1,0 +1,17 @@
+# Fixture for gate-integrity.ts: the `gate-integrity` job itself is absent, so the required-gates
+# manifest check must flag this workflow file. No commented-out steps here -- isolates the
+# "missing required job" signal from the "commented-out step" signal.
+name: Fixture CI (missing job)
+
+on:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@0000000000000000000000000000000000000000
+      - run: echo ok

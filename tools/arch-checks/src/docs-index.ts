@@ -19,6 +19,7 @@
 
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
+import process from 'node:process';
 
 const DOCS_ROOT = new URL('../../../docs/', import.meta.url).pathname;
 const INDEX_PATH = join(DOCS_ROOT, 'README.md');
@@ -127,7 +128,10 @@ function read(kind: 'adr' | 'task', file: string): Record_ | undefined {
   const sections = topLevelSections(source);
   const expected = kind === 'adr' ? ADR_SECTIONS : TASK_SECTIONS;
   if (sections.length !== expected.length || expected.some((name, i) => sections[i] !== name)) {
-    fail(file, `sections must be exactly, in order: ${expected.join(' → ')}; found: ${sections.join(' → ') || '(none)'}`);
+    fail(
+      file,
+      `sections must be exactly, in order: ${expected.join(' → ')}; found: ${sections.join(' → ') || '(none)'}`,
+    );
   }
 
   // The contract's one prose rule: an ADR records a decision, a task records work. A checklist in
@@ -168,11 +172,11 @@ function collect(kind: 'adr' | 'task'): readonly Record_[] {
   return records;
 }
 
-function renderIndex(adrs: readonly Record_[], tasks: readonly Record_[]): string {
-  const adrRows = adrs
+function renderIndex(adrRecords: readonly Record_[], taskRecords: readonly Record_[]): string {
+  const adrRows = adrRecords
     .map((r) => `| [${r.id}](adr/${r.file}) | ${r.title} | ${r.status} | ${r.date} |`)
     .join('\n');
-  const taskRows = tasks
+  const taskRows = taskRecords
     .map((r) => {
       const refs = r.refs.length === 0 ? '—' : r.refs.join(', ');
       return `| [${r.id}](tasks/${r.file}) | ${r.title} | ${r.status} | ${refs} |`;
@@ -260,13 +264,17 @@ if (problems.length > 0) {
 
 if (write) {
   writeFileSync(INDEX_PATH, expectedIndex);
-  console.log(`docs-index: wrote ${basename(INDEX_PATH)} (${adrs.length} ADRs, ${tasks.length} tasks)`);
+  console.log(
+    `docs-index: wrote ${basename(INDEX_PATH)} (${adrs.length} ADRs, ${tasks.length} tasks)`,
+  );
 } else {
   let actual = '';
   try {
     actual = readFileSync(INDEX_PATH, 'utf8');
   } catch {
-    console.error('docs-index: docs/README.md does not exist. Run `bun run docs-index -- --write`.');
+    console.error(
+      'docs-index: docs/README.md does not exist. Run `bun run docs-index -- --write`.',
+    );
     process.exit(1);
   }
   if (actual !== expectedIndex) {
