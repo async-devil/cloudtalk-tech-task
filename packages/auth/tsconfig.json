@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "composite": true,
+    // Web/fetch globals (Request/Response/Headers/URL): the auth module speaks the WinterCG fetch
+    // interface better-auth's handler + the session middleware use — same lib set apps/api adds.
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["src"]
+}

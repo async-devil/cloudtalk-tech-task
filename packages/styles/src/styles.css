@@ -1,0 +1,35 @@
+/*
+ * `@repo/styles/styles.css` — THE stylesheet entry point.
+ *
+ * Consumers import exactly this one file:
+ *
+ * @import 'tailwindcss';
+ * @import '@repo/styles/styles.css';
+ * @source '../../../packages/styles/src';
+ *
+ * The `@source` line is not optional and is not this file's job to supply: Tailwind v4 generates
+ * CSS by SCANNING for class candidates, and every candidate an app renders through a primitive
+ * lives in this package rather than in the app. Without it the primitives render with class names
+ * Tailwind never generated CSS for — the page looks unstyled and nothing fails.
+ *
+ * THE SPLIT IS ORGANISATIONAL, NOT A SECOND SOURCE OF TRUTH. Every value still lives in exactly
+ * one place; the files below divide by CONCERN so that re-branding is a bounded edit ("the palette
+ * is one file") rather than a hunt through a 200-line stylesheet. Re-branding this repository is
+ * editing token VALUES in `tokens/` and nothing else — if you are touching a component to change a
+ * colour, the seam is failing and the fix belongs in a token.
+ *
+ * This file replaced `theme.css` in, and NO alias was kept for the old name: a second
+ * sanctioned entry point that exists only to spell an old path is precisely the convenience
+ * ADR-0001 refuses. The `SANCTIONED_SUBPATH_ENTRIES` row, the app's import, and the token checks
+ * arming path all moved in the same change, because a public entry point that moves halfway
+ * renders the app unstyled.
+ *
+ * Order is deliberate: tokens first (they declare the custom properties everything else reads),
+ * `base.css` last (it CONSUMES them).
+ */
+
+@import "./tokens/colors.css";
+@import "./tokens/typography.css";
+@import "./tokens/spacing.css";
+@import "./tokens/motion.css";
+@import "./tokens/base.css";

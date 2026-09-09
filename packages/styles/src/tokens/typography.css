@@ -1,0 +1,38 @@
+/*
+ * The type scale.
+ *
+ * BINDING FLOOR: no token here is below 0.6875rem (11px) — ADR-0012's "no sub-11px type",
+ * carried forward unchanged by ADR-0012. The floor is enforced STRUCTURALLY, by there being
+ * nothing smaller to reach for; `test/design-tokens.test.ts` asserts it against the file so a
+ * later addition cannot quietly undercut it.
+ *
+ * Each size carries its companion `--text-*--line-height`, which is Tailwind's own convention for
+ * pairing leading with a size: `text-body` then sets both, and a caller cannot pick a size while
+ * forgetting its leading.
+ *
+ * See `colors.css`'s header for why every token is declared in `:root` and registered separately
+ * in `@theme inline` — the short version is that `@theme`-only tokens are invisible to the plain
+ * browser the specimen cards run in, which was measured rather than assumed.
+ */
+
+:root {
+  --text-caption: 0.6875rem;
+  --text-caption--line-height: 1rem;
+  --text-body: 1rem;
+  --text-body--line-height: 1.5rem;
+  --text-title: 1.25rem;
+  --text-title--line-height: 1.75rem;
+  --text-display: 1.75rem;
+  --text-display--line-height: 2.25rem;
+}
+
+@theme inline {
+  --text-caption: var(--text-caption);
+  --text-caption--line-height: var(--text-caption--line-height);
+  --text-body: var(--text-body);
+  --text-body--line-height: var(--text-body--line-height);
+  --text-title: var(--text-title);
+  --text-title--line-height: var(--text-title--line-height);
+  --text-display: var(--text-display);
+  --text-display--line-height: var(--text-display--line-height);
+}

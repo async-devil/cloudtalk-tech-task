@@ -1,0 +1,41 @@
+/*
+ * Durations, easings, and the token-level reduced-motion gate.
+ *
+ * THE GATE IS THE POINT. Gating motion here rather than per-component means every consumer of a
+ * duration token — present and future, in this package or any feature, hand-written or vendored —
+ * collapses to 0ms for a visitor who asked for reduced motion, without anyone writing a single
+ * `motion-reduce:` variant.
+ *
+ * The corollary is a RETOKENISING REQUIREMENT, not an accident: a vendored component
+ * inherits the gate only if its animation reads a duration token. An arriving component with a
+ * hard-coded `duration-200`, or a keyframe animation carrying its own literal seconds, silently
+ * escapes it — which is exactly the pitfall `docs/trusted-code-sources.md`'s smoothui row warns
+ * about. Keyframe animations that cannot be expressed as a duration token carry `motion-safe:` at
+ * the call site instead (see the Spinner primitive).
+ *
+ * Because the values live in `:root` rather than inside `@theme` (see `colors.css`'s header), the
+ * gate below reaches a plain browser too — so the motion specimen card demonstrates the real
+ * behaviour rather than a description of it.
+ */
+
+:root {
+  --duration-fast: 120ms;
+  --duration-medium: 240ms;
+  --duration-slow: 800ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@theme inline {
+  --duration-fast: var(--duration-fast);
+  --duration-medium: var(--duration-medium);
+  --duration-slow: var(--duration-slow);
+  --ease-standard: var(--ease-standard);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-medium: 0ms;
+    --duration-slow: 0ms;
+  }
+}

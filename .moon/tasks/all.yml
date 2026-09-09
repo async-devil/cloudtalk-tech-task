@@ -22,6 +22,15 @@ tasks:
     deps:
       - '^:build'
   # Vitest per ADR-0010 (bun test is not the sanctioned runner).
+  #
+  # Vitest runs on Node, not on the Bun the application ships on, and that is deliberate rather
+  # than incidental. Forcing the suites onto Bun (`bun x --bun vitest run`) was tried and breaks
+  # zod's named exports under vitest's transform — every config slice fails at module evaluation
+  # with `z` undefined. Node is the runtime vitest supports; the runtime the code SHIPS on is
+  # proven by the integration suites, which exercise it through the real process.
+  #
+  # The DOM suites therefore avoid jsdom, whose bundled undici needs a `webidl` helper that only
+  # exists in Node 22+ — see the environment note in packages/styles/vitest.config.ts.
   test:
     command: 'vitest run'
     deps:
