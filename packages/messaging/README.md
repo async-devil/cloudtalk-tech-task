@@ -2,13 +2,20 @@
 
 ## Purpose
 
-Queue/worker wrappers over BullMQ () plus the messaging-complete
+Queue/worker wrappers over BullMQ plus the messaging-complete
 surface: a producer (`createQueue`) and
 a consumer (`createWorker`) for one stage each, worker rate limiting + queue pause/resume,
 idempotent repeatable-job scheduling (`scheduleRepeatable`), a Redis-Lua token-bucket rate
 limiter for provider-side throttling, and `BestEffortEventBus` for cross-module acceleration
 signals (ADR-0007). No module imports `bullmq` but this one (dep-cruiser
 `adapters-and-sdk-only-in-runtime`, SO-1).
+
+**When NOT to use this.** This package wraps generic queue/worker/rate-limit mechanics only — it
+has no opinion about what a job's payload means or what a pipeline's own state machine looks like
+(that is `packages/jobs`', or any other consumer's, concern). It is also the ONE sanctioned
+importer of `bullmq`/`ioredis`: reaching for either directly from anywhere else, instead of through
+this package's `createQueue`/`createWorker`, is exactly what the `adapters-and-sdk-only-in-runtime`
+dependency-cruiser rule exists to reject.
 
 ## Public contract
 
