@@ -1,7 +1,7 @@
 ---
 id: TASK-0001
 title: Workspace scaffold, foundation modules, and the gate chain
-status: in-progress
+status: done
 adr: [ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0012, ADR-0016, ADR-0018]
 date: 2026-09-08
 ---
@@ -23,24 +23,24 @@ sign-in flow. Deployment beyond local Compose. Any production mail transport (AD
 
 ## Acceptance criteria
 
-- [ ] `bun install` succeeds on a clean checkout with no network access beyond the registry.
-- [ ] `moon ci` exits zero and its trailing task count reports every project's `lint`, `typecheck`,
+- [x] `bun install` succeeds on a clean checkout with no network access beyond the registry.
+- [x] `moon ci` exits zero and its trailing task count reports every project's `lint`, `typecheck`,
       `build` and `test` as run, not cached.
-- [ ] `docker compose -f deploy/compose/dev.yml up -d` brings up Postgres and Redis, and
+- [x] `docker compose -f deploy/compose/dev.yml up -d` brings up Postgres and Redis, and
       `moon run api:migrate` applies every migration against a fresh database.
-- [ ] `GET /health` and `GET /health/worker` return 200 with the api running in `test` mode and no
+- [x] `GET /health` and `GET /health/worker` return 200 with the api running in `test` mode and no
       secrets configured.
-- [ ] A magic-link sign-in completes end to end against the development mail adapter.
-- [ ] `bun run extract-module --all` reports pass for every package. `contracts` reports
+- [x] A magic-link sign-in completes end to end against the development mail adapter.
+- [x] `bun run extract-module --all` reports pass for every package. `contracts` reports
       `pass (build-only)` — it ships types and has no runtime suite. On a host without `node-gyp`,
       `messaging`, `jobs` and `auth` fail at dependency install rather than at extraction; that is
       an environment gap, not a boundary violation, and CI has the build tools.
-- [ ] `moon run root:arch-checks-selftest` passes, and every gate's red fixture is red when its
+- [x] `moon run root:arch-checks-selftest` passes, and every gate's red fixture is red when its
       checker runs against it.
-- [ ] `bun run docs-index` is clean, and running it with `--write` twice produces no diff.
-- [ ] `grep -rIn -E 'WI-[0-9]|T-[0-9]{3}|AUD-[0-9]|CP-[ABC]|docs/designs'` over the tree returns
+- [x] `bun run docs-index` is clean, and running it with `--write` twice produces no diff.
+- [x] `grep -rIn -E 'WI-[0-9]|T-[0-9]{3}|AUD-[0-9]|CP-[ABC]|docs/designs'` over the tree returns
       nothing.
-- [ ] Every module has a README naming its purpose, public contract, dependencies, config slice,
+- [x] Every module has a README naming its purpose, public contract, dependencies, config slice,
       named invariants with test ids, and telemetry.
 
 ## Notes
