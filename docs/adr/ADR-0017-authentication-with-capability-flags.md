@@ -1,7 +1,7 @@
 ---
 id: ADR-0017
 title: Magic-link authentication with a single-tenant session model carrying capability flags, over a default-on security baseline
-status: accepted
+status: superseded
 supersedes: [ADR-0013]
 date: 2026-09-09
 ---
