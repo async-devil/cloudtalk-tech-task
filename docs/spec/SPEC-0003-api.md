@@ -3,14 +3,14 @@ id: SPEC-0003
 title: The API — contract namespaces, wire shapes, pagination and failure
 status: draft
 supersedes: []
-adr: [ADR-0004, ADR-0008, ADR-0013]
+adr: [ADR-0004, ADR-0008, ADR-0016, ADR-0017]
 date: 2026-09-09
 ---
 
 ## Context
 
 TASK-0003 names six routes in one sentence and states that every one must be declared in the contract
-before it is implemented. This document is that declaration in prose: every procedure with its
+before it is implemented; the catalogue authoring surface (SPEC-0001 screen S7) adds two more. This document is that declaration in prose: every procedure with its
 method, path, session requirement, input, output, failure codes and limits — enough to write
 `@repo/contracts` from, and enough to review the implementation against.
 
@@ -47,11 +47,13 @@ context wired at the composition root (`apps/api/src/runtime/build-app.ts`, ADR-
 
 ### Wire vocabulary
 
-Only public tokens cross the boundary. No internal uuid appears in any exported type — not in an
-input, not in an output, not in an error's `details` (ADR-0011, ADR-0013).
+Only public identifiers cross the boundary — a slug for a catalogue row, a token for a user-owned
+one (ADR-0016). No internal uuid appears in any exported type: not in an input, not in an output, not
+in an error's `details`.
 
 ```ts
-productTokenSchema = z.string().regex(/^prd_[0-9A-Za-z]{21}$/)
+productSlugSchema  = z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/).min(3).max(80)
+skuSchema          = z.string().regex(/^[A-Z0-9][A-Z0-9-]{2,31}$/)
 reviewTokenSchema  = z.string().regex(/^rev_[0-9A-Za-z]{21}$/)
 userTokenSchema    = z.string().regex(/^usr_[0-9A-Za-z]{21}$/)   // exists, session/session.ts
 
@@ -60,7 +62,7 @@ reviewTitleSchema  = z.string().trim().min(3).max(120)
 reviewBodySchema   = z.string().trim().min(10).max(4000)
 ```
 
-The three content schemas are the same bounds as SPEC-0002's `CHECK` constraints. Two layers for one
+The content and identifier schemas are the same bounds as SPEC-0002's `CHECK` constraints. Two layers for one
 rule, deliberately: the schema is the message a user reads, the constraint is what holds when
 something writes without going through it.
 
@@ -72,7 +74,7 @@ ratingAggregate = {
 }
 
 productSummary = {
-  token, name, categoryName, priceMinor, currencyCode, rating: ratingAggregate,
+  slug, sku, name, categoryName, priceMinor, currencyCode, rating: ratingAggregate,
 }
 
 productDetail = productSummary + { description }
@@ -94,11 +96,17 @@ the SPA has one paging component and one exhaustion test.
 | Procedure | Method + path | Session | Success |
 |---|---|---|---|
 | `products.list` | `GET /products` | anonymous | `pageOf(productSummary)` |
-| `products.get` | `GET /products/{productToken}` | anonymous | `productDetail` |
-| `reviews.listForProduct` | `GET /products/{productToken}/reviews` | anonymous | `pageOf(reviewSummary)` |
-| `reviews.submit` | `POST /products/{productToken}/reviews` | **required** | `reviewSummary` |
+| `products.get` | `GET /products/{productSlug}` | anonymous | `productDetail` |
+| `reviews.listForProduct` | `GET /products/{productSlug}/reviews` | anonymous | `pageOf(reviewSummary)` |
+| `reviews.submit` | `POST /products/{productSlug}/reviews` | **required** | `reviewSummary` |
 | `reviews.update` | `PATCH /reviews/{reviewToken}` | **required** | `reviewSummary` |
 | `reviews.remove` | `DELETE /reviews/{reviewToken}` | **required** | `{ token }` |
+| `products.create` | `POST /products` | **capability** | `productDetail` |
+| `products.update` | `PATCH /products/{productSlug}` | **capability** | `productDetail` |
+
+"**capability**" means a resolved session whose user holds `catalogue_manager` (ADR-0017). It is a
+strictly stronger requirement than "required": no session is `401`, a session without the capability
+is `403`.
 
 #### `products.list`
 
@@ -109,7 +117,8 @@ string, limit?: number.int().min(1).max(50) }`, default `limit` 20, default `sor
 caller who asked for 500 and received 50 without being told has been lied to about the result set,
 and will page as if it were complete.
 
-`query` is a case-insensitive substring match on product name. `sort: 'rating'` orders by
+`query` is a case-insensitive substring match on product **name or SKU**, so pasting a SKU finds
+its product. `sort: 'rating'` orders by
 `rating_average DESC NULLS LAST` then `review_count DESC` — unrated products sort last (SPEC-0001
 open question 4).
 
@@ -118,11 +127,11 @@ the entire point of ADR-0014 and should be visible in the router without a comme
 
 #### `products.get`
 
-Input `{ productToken }`. Unknown token → `NOT_FOUND`. Also reads the projection.
+Input `{ productSlug }`. Unknown slug → `NOT_FOUND`. Also reads the projection.
 
 #### `reviews.listForProduct`
 
-Input `{ productToken, cursor?, limit? (≤50, default 20) }`. Newest first, keyset-paginated on
+Input `{ productSlug, cursor?, limit? (≤50, default 20) }`. Newest first, keyset-paginated on
 `(created_at, review_id)` — an offset would skip or repeat rows as reviews arrive under the reader.
 The cursor is an opaque base64url string of that pair; it is not a page number, and a cursor from a
 different sort or product is rejected as `VALIDATION`.
@@ -135,7 +144,7 @@ caller every row is `false`.
 
 #### `reviews.submit`
 
-Input `{ productToken, rating, title, body }`. Requires a session: an anonymous request is answered
+Input `{ productSlug, rating, title, body }`. Requires a session: an anonymous request is answered
 `401` by the session middleware **before it reaches the pipeline** (TASK-0003), so an unauthenticated
 caller cannot make the system do work.
 
@@ -158,6 +167,32 @@ what the "edited" marker reads (SPEC-0001). Emits the same recomputation event a
 Input `{ reviewToken }`. Same ownership rule and the same event. Returns the removed token so the
 client can reconcile its cache without a refetch race.
 
+#### `products.create`
+
+Input `{ name, description, categoryName, priceMinor, currencyCode, sku, slug? }`. Requires the
+`catalogue_manager` capability.
+
+- **The slug is derived from `name` when omitted** — lowercased, non-alphanumerics collapsed to
+  single hyphens, trimmed to 80 characters — and accepted verbatim when supplied, so a manager can
+  fix an ugly derivation before the first save. Derivation happens server-side even though the form
+  previews it (SPEC-0001 S7): a client-side slug is a suggestion, never the value.
+- **A colliding slug or SKU is `CONFLICT`**, and `details` names which one (`{ field: 'slug' }` or
+  `{ field: 'sku' }`) so the form can mark the right input. The collision is caught from the unique
+  constraint's typed translation, not from a pre-flight `SELECT` that races.
+- The response is the created `productDetail`, whose `rating` is `{ reviewCount: 0, ratingAverage:
+  null, computedAt: null }` — there is no projection row yet and none is owed (SPEC-0004).
+- No outbox event: nothing is derived from a product that has no reviews.
+
+#### `products.update`
+
+Input `{ productSlug, name?, description?, categoryName?, priceMinor?, currencyCode? }`, at least one
+field present. Requires the capability.
+
+**`slug` and `sku` are not editable, and sending either is `VALIDATION` — never a silent ignore.**
+A write that accepts a field and discards it is the failure mode where a manager corrects a SKU,
+sees a success toast, and finds the old value the next morning. The immutability rule itself lives
+here in the pipeline, because a check constraint cannot see the old row (SPEC-0002).
+
 ### Failure
 
 The taxonomy is `@repo/kernel`'s and the wire shape is `apiErrorShape` — `{ code, message, details? }`
@@ -169,8 +204,8 @@ where `code` is one of `ERROR_CODES`. **Status mapping happens only in
 |---|---|---|
 | `VALIDATION` | 400 | Input schema, an out-of-range `limit`, an unusable cursor |
 | `UNAUTHORIZED` | 401 | Write routes with no resolved session |
-| `FORBIDDEN` | 403 | Editing or deleting a review the session does not own |
-| `NOT_FOUND` | 404 | Unknown product token; unknown review on a read |
+| `FORBIDDEN` | 403 | Editing or deleting a review the session does not own; creating or editing a product without `catalogue_manager` |
+| `NOT_FOUND` | 404 | Unknown product slug; unknown review on a read |
 | `CONFLICT` | 409 | The one-review-per-author constraint |
 | `RATE_LIMITED` | 429 | The limiter, carrying `Retry-After` |
 | `PROVIDER` / `INTERNAL` | 502 / 500 | Upstream or our own failure; body is the generic message, never ours |
@@ -183,7 +218,7 @@ The 403-for-a-missing-review rule is asserted at the HTTP layer, not as a unit t
 
 ### Limits
 
-The existing baseline (ADR-0013, `apps/api/src/http/security/rate-limit.ts`) has two buckets: `auth`
+The existing baseline (ADR-0017, `apps/api/src/http/security/rate-limit.ts`) has two buckets: `auth`
 (every `/api/auth/*` request) and `unauthenticated-post` (a POST with no session), both keyed by
 client IP, both answering `429` with `Retry-After`. That list is marked frozen in the source, and
 TASK-0003 asks for two things it does not cover: a limit on **unauthenticated reads**, and a limit on
@@ -194,7 +229,8 @@ the requirement and its proposed shape; the buckets are not added until a record
 Open question 1):
 
 - `anonymous-read` — GET with no resolved session, keyed by client IP.
-- `review-submission` — `reviews.submit` and `reviews.update` with a session, keyed by the user's
+- `review-submission` — `reviews.submit`, `reviews.update` and `products.create` with a session,
+  keyed by the user's
   internal id (never a token in a log line, never any id in a metric attribute — the bucket name is
   the only dimension the counter carries, ADR-0009).
 
@@ -207,6 +243,23 @@ The OpenAPI document generated from `appContract` lists every route with its inp
 error shapes (TASK-0003). It is generated, never hand-written: a hand-written API document is a
 second source of truth that starts wrong the first time a route changes.
 
+### The session bootstrap payload
+
+`sessionBootstrapSchema` (`packages/contracts/src/contracts/session/session.ts`) gains one field:
+
+```ts
+canManageCatalogue: z.boolean()
+```
+
+It is an **affordance, not an authorization**: the SPA renders or hides the authoring surface with
+it, and the server refuses the write regardless of what the client believes. The test that proves
+the distinction calls `products.create` with a session that lacks the capability and expects `403` —
+asserted at the HTTP layer, because a guard that is correct in isolation and unwired looks identical
+to one that works (ADR-0017).
+
+The field's name says what the client may *show*, not what the row stores (`catalogue_manager`); the
+two are deliberately different words so nobody mistakes the payload for the source of truth.
+
 ### What the SPA does with this
 
 `shared/api` types its client from `appContract` (already), `shared/query-keys` derives keys from
@@ -216,14 +269,17 @@ the **aggregate** is left alone, because it is not updated yet (ADR-0014, SPEC-0
 
 ## Open questions
 
-1. **The two new rate-limit buckets** need a record: ADR-0013's bucket list is stated as frozen, and
+1. **The two new rate-limit buckets** need a record: ADR-0017's bucket list is stated as frozen, and
    this document deliberately does not unfreeze it. Proposal: a short record accepting
    `anonymous-read` and `review-submission` with the keys above.
 2. **`authorLabel`** depends on SPEC-0001's open question 1. Until it is settled, the field is
    specified as "a stable, non-identifying label" and the derivation is not fixed here.
-3. **`reviews.listMine`** (an author's own reviews across products) is not specified: no screen in
+3. **Granting the capability has no surface.** `catalogue_manager` is set by seed or by a database
+   update; there is no admin screen for it, and ADR-0017 records that as deliberate for a system
+   with one manager. The day there are ten, it needs one.
+4. **`reviews.listMine`** (an author's own reviews across products) is not specified: no screen in
    SPEC-0001 needs it. `ix_review__author_id` already serves it if a screen appears.
-4. **Cursor stability across a sort change** is handled by rejecting a cursor that does not match the
+5. **Cursor stability across a sort change** is handled by rejecting a cursor that does not match the
    current sort. An alternative — encoding the sort into the cursor and ignoring the parameter — is
    friendlier and hides a client bug; rejection is proposed for that reason.
 
@@ -232,13 +288,16 @@ the **aggregate** is left alone, because it is not updated yet (ADR-0014, SPEC-0
 | Part of this specification | Constrained by | Implemented by |
 |---|---|---|
 | Contract-first declaration, namespaces, route paths | ADR-0004 | TASK-0003 |
-| Wire vocabulary, tokens only | ADR-0011, ADR-0013 | TASK-0003 |
+| Wire vocabulary: slugs for catalogue rows, tokens for user-owned ones | ADR-0016 | TASK-0003 |
 | Zod bounds mirroring the DDL checks | ADR-0004, SPEC-0002 | TASK-0002, TASK-0003 |
 | Read split: list reads the projection, reviews read the truth | ADR-0014 | TASK-0003 |
-| Session requirement and the pre-pipeline 401 | ADR-0013 | TASK-0003 |
+| Session requirement and the pre-pipeline 401 | ADR-0017 | TASK-0003 |
+| `products.create` / `products.update` and the capability gate | ADR-0017 | TASK-0008 |
+| Slug derivation, slug/SKU immutability on the wire | ADR-0016 | TASK-0008 |
+| `canManageCatalogue` in the bootstrap payload | ADR-0017 | TASK-0008 |
 | Ownership rules (403), conflict (409) | ADR-0008 | TASK-0003 |
 | Error mapping in one place, generic 5xx bodies | ADR-0008 | TASK-0003 |
 | Pagination bounds and cursor rules | ADR-0004 | TASK-0003 |
-| Rate-limit buckets (pending a record) | ADR-0013 | TASK-0003 |
+| Rate-limit buckets (pending a record) | ADR-0017 | TASK-0003 |
 | Generated OpenAPI document | ADR-0004 | TASK-0003 |
 | Client typing and invalidation rules | ADR-0012 | TASK-0004 |

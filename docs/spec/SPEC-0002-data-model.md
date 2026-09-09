@@ -3,7 +3,7 @@ id: SPEC-0002
 title: The data model — the reviews schema, its vocabularies and its projection
 status: draft
 supersedes: []
-adr: [ADR-0006, ADR-0011, ADR-0014]
+adr: [ADR-0006, ADR-0014, ADR-0016, ADR-0017]
 date: 2026-09-09
 ---
 
@@ -11,7 +11,7 @@ date: 2026-09-09
 
 TASK-0002 requires four tables — `product`, `review`, the moderation-state vocabulary and
 `product_rating` — and states acceptance criteria for them without defining a single column. This
-document defines them: every column, type, constraint and index, in a shape that satisfies ADR-0011's
+document defines them: every column, type, constraint and index, in a shape that satisfies ADR-0016's
 conventions as the `migration-ddl` gate actually enforces them, so the migration is a transcription
 rather than a design exercise.
 
@@ -25,18 +25,25 @@ spine and its four vocabularies (`0002-create-jobs-spine.ts`), and the `auth` sc
 
 ### Schema and ownership
 
-One schema per bounded context (ADR-0011). The `reviews` module owns schema `reviews`; its closed
+One schema per bounded context (ADR-0016). The `reviews` module owns schema `reviews`; its closed
 vocabularies live in `reference`, which belongs to no single module, alongside the spine's four. No
 other module reads these tables — a cross-module read is a typed port or an event (ADR-0001).
 
-One migration file: **`packages/persistence/migrations/0004-create-reviews.ts`**, on the single
-global index sequence (ADR-0006: one folder, one sequence, so cross-module ordering is not a matter
-of luck). Hand-written, append-only, immutable once merged.
+Two migration files, both on the single global index sequence (ADR-0006: one folder, one sequence,
+so cross-module ordering is not a matter of luck), hand-written, append-only, immutable once merged:
+
+- **`0004-create-reviews.ts`** — everything below.
+- **`0005-add-app-user-catalogue-manager.ts`** — one statement:
+  `ALTER TABLE auth.app_user ADD COLUMN catalogue_manager boolean NOT NULL DEFAULT false`. It is a
+  separate file rather than an edit to `0003-create-auth.ts` because a merged migration is
+  immutable, and it belongs to the `auth` schema rather than to `reviews` because the capability is
+  a property of the user, not of the catalogue (ADR-0017). `NOT NULL DEFAULT false`: the
+  `nullable-boolean` rule forbids the third state, and "unknown" is not a capability anyone holds.
 
 ### `reference.product_category`
 
 A closed vocabulary, not a `CHECK` and not a native enum: a new category is an insert, and the table
-can be joined for a display label (ADR-0011).
+can be joined for a display label (ADR-0016).
 
 ```sql
 CREATE TABLE reference.product_category (
@@ -72,7 +79,8 @@ role, not a migration and a rewritten query.
 ```sql
 CREATE TABLE reviews.product (
   product_id          uuid        NOT NULL DEFAULT uuidv7(),
-  token               text        NOT NULL,
+  slug                text        NOT NULL,
+  sku                 text        NOT NULL,
   name                text        NOT NULL,
   description         text        NOT NULL,
   product_category_id integer     NOT NULL,
@@ -81,8 +89,11 @@ CREATE TABLE reviews.product (
   created_at          timestamptz NOT NULL DEFAULT now(),
   updated_at          timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT pk_product PRIMARY KEY (product_id),
-  CONSTRAINT uq_product__token UNIQUE (token),
-  CONSTRAINT ck_product__token_format CHECK (token ~ '^prd_[0-9A-Za-z]{21}$'),
+  CONSTRAINT uq_product__slug UNIQUE (slug),
+  CONSTRAINT uq_product__sku UNIQUE (sku),
+  CONSTRAINT ck_product__slug_format CHECK (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
+  CONSTRAINT ck_product__slug_length CHECK (char_length(slug) BETWEEN 3 AND 80),
+  CONSTRAINT ck_product__sku_format CHECK (sku ~ '^[A-Z0-9][A-Z0-9-]{2,31}$'),
   CONSTRAINT ck_product__name_not_empty CHECK (name <> ''),
   CONSTRAINT ck_product__price_minor_non_negative CHECK (price_minor >= 0),
   CONSTRAINT ck_product__currency_code_iso CHECK (currency_code ~ '^[A-Z]{3}$'),
@@ -95,13 +106,26 @@ CREATE TRIGGER tg_product__set_updated_at
 CREATE INDEX ix_product__product_category_id ON reviews.product (product_category_id)
 ```
 
-- `token` is minted by `mintToken(TOKEN_PREFIX.Product)` (`@repo/entities`) — already registered;
-  nothing to add there. `product_id` never crosses the wire.
-- `price_minor` is minor units in an integer, never a float (ADR-0011), with `currency_code` beside
+- **`slug` is the product's public identifier** — the API path segment and the SPA route key
+  (ADR-0016). A catalogue is enumerable by construction, so an opaque token would protect nothing
+  the catalogue screen does not hand out anyway, while costing readability on every link and support
+  ticket. Reviews and users keep their `rev_`/`usr_` tokens: those are user-owned rows, where
+  walking the id space reads someone else's data. `product_id` still never crosses the wire.
+- **`sku` is a business identifier, not an address.** Unique, uppercase, and stored in its own
+  column so the catalogue and a warehouse can say the same word. It is never a path segment: a SKU
+  that becomes a URL is a SKU that can never be corrected.
+- **Both are immutable after creation, and neither immutability can be a constraint.** A check
+  constraint cannot see the old row, so the rule lives in the write pipeline (SPEC-0003:
+  `products.update` rejects either field) and is worth exactly as much as the test that proves it —
+  mutate the guard, watch the test go red, restore it (ADR-0010).
+- `uq_product__slug` is also the index the by-slug read uses; there is no separate `ix_`.
+- `price_minor` is minor units in an integer, never a float (ADR-0016), with `currency_code` beside
   it because an amount without its currency is not an amount.
 - The category index is added with the query that needs it: the catalogue's category filter
   (SPEC-0003, `products.list`).
-- Products are written by the seed command (TASK-0006). There is no product-authoring surface.
+- Products are created in the application by a catalogue manager (SPEC-0001 screen S7, SPEC-0003
+  `products.create`) and seeded for a fresh checkout (TASK-0006). Both paths write the same row
+  through the same pipeline.
 
 ### `reviews.review`
 
@@ -172,13 +196,18 @@ CREATE TABLE reviews.product_rating (
 )
 ```
 
-- **Keyed by `product_id`, not a `product_rating_id`.** ADR-0011's `<table>_id` rule exists to make
+- **Keyed by `product_id`, not a `product_rating_id`.** ADR-0016's `<table>_id` rule exists to make
   foreign-key columns self-describing; a projection keyed one-to-one by its subject has nothing to
   describe. The `migration-ddl` gate already exempts tables the lifecycle registry classes as
   `projection` — the exemption is scoped by class, not by name, so this needs no gate edit.
 - **`rating_average` is the only nullable column in this schema**, and the third check makes "no
   reviews" and "no average" the same fact rather than two that can disagree. SPEC-0001 rule 8 renders
   it as "No reviews yet", never `0.0`.
+- **A product may have no row here at all.** The projection row appears when the first
+  recomputation runs, which is after the first review — so a newly created product has none, and
+  every read joins `LEFT`. Do not paper over the null with a zero-row insert at creation time: an
+  aggregate row claiming `computed_at` for a computation that never happened is a lie the UI would
+  faithfully display.
 - **No `updated_at`, and no trigger.** `computed_at` is not a row-modification timestamp; it is the
   claim the UI displays ("calculated 2 minutes ago") and the worker sets it explicitly on every
   recomputation, including one that finds nothing changed.
@@ -269,13 +298,19 @@ schema has no boolean at all); every `updated_at` paired with its trigger
 
 ### Seed data (the shape TASK-0006 fills)
 
-Five categories; roughly twenty products spread across them; six review authors; reviews with a
+Five categories; roughly twenty products spread across them, each with a real slug
+(`sony-wh-1000xm5`) and a real SKU (`AUD-WH1000XM5`); six review authors; reviews with a
 **deliberately non-uniform** rating distribution and dates spread over recent months. At least one
 product carries enough reviews that its average is not trivially one rating (TASK-0006's criterion),
 at least one product has exactly one review, and at least one has none — the three states SPEC-0001's
-screens must render. Seeding is idempotent by deterministic token: re-running updates in place rather
-than duplicating, and it enqueues a recomputation per product rather than writing `product_rating`
-directly, so the seed exercises the same path production does.
+screens must render.
+
+One seeded account has `catalogue_manager = true`, so the authoring surface (SPEC-0001 screen S7) is
+reachable immediately after `bun run setup`; the rest do not, so the 403 path is reachable too.
+
+Seeding is idempotent by slug — the natural key is what makes "insert or update" expressible without
+a second identifier — and it enqueues a recomputation per product rather than writing
+`product_rating` directly, so the seed exercises the same path production does.
 
 ## Open questions
 
@@ -290,7 +325,13 @@ directly, so the seed exercises the same path production does.
 3. **`title` requiredness.** A required title is specified (`char_length(title) BETWEEN 3 AND 120`).
    Amazon allows a body-only review; making it optional later is a nullable column and a relaxed Zod
    schema, in that order.
-4. **Full-text search.** The catalogue filter is a substring match on `name` (SPEC-0003), which uses
+4. **A renamed product keeps its slug.** The slug is frozen at creation (ADR-0016 rejected a
+   redirect-history table for a catalogue with no public traffic yet), so a product renamed from
+   "WH-1000XM5" to "WH-1000XM5 Mark II" keeps `sony-wh-1000xm5`. That is a link that still resolves
+   and a URL that reads slightly stale — the right trade here, and the wrong one the day the
+   catalogue is indexed by a search engine. The fix, when it is needed, is the redirect table that
+   record names.
+5. **Full-text search.** The catalogue filter is a substring match on `name` (SPEC-0003), which uses
    no index. At catalogue scale that is fine and it is stated here so that the day it is not, the fix
    is a known one (a trigram index, or a search context).
 
@@ -299,11 +340,13 @@ directly, so the seed exercises the same path production does.
 | Part of this specification | Constrained by | Implemented by |
 |---|---|---|
 | Schema per context, one migration file | ADR-0001, ADR-0006 | TASK-0002 |
-| `reference.product_category`, `reference.review_moderation_state` | ADR-0011 | TASK-0002 |
-| `reviews.product`, `reviews.review` | ADR-0011 | TASK-0002 |
-| One-review-per-author unique constraint → typed `ConflictError` | ADR-0008, ADR-0011 | TASK-0002, TASK-0003 |
+| `reference.product_category`, `reference.review_moderation_state` | ADR-0016 | TASK-0002 |
+| `reviews.product`, `reviews.review` | ADR-0016 | TASK-0002 |
+| Slug and SKU identity, and their immutability | ADR-0016 | TASK-0002, TASK-0008 |
+| `auth.app_user.catalogue_manager` | ADR-0017 | TASK-0008 |
+| One-review-per-author unique constraint → typed `ConflictError` | ADR-0008, ADR-0016 | TASK-0002, TASK-0003 |
 | `reviews.product_rating`, its nullability rule and `computed_at` | ADR-0014 | TASK-0002, TASK-0005 |
 | Entity vocabularies and their parity tests | ADR-0003, ADR-0010 | TASK-0002 |
 | Lifecycle registry rows | ADR-0006 | TASK-0002 |
-| Token minting and the wire/internal id split | ADR-0011, ADR-0013 | TASK-0002, TASK-0003 |
+| Public identifiers and the wire/internal id split | ADR-0016, ADR-0017 | TASK-0002, TASK-0003 |
 | Seed shape and idempotence | ADR-0005 | TASK-0006 |

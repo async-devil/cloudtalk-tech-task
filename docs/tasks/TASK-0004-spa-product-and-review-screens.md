@@ -2,7 +2,7 @@
 id: TASK-0004
 title: SPA — product list, product detail, and the review submission flow
 status: draft
-adr: [ADR-0012, ADR-0008]
+adr: [ADR-0008, ADR-0012]
 date: 2026-09-08
 ---
 
@@ -33,7 +33,7 @@ Moderation UI. Author profiles. Anything requiring a route the API does not serv
 
 ## Notes
 
-The aggregate is eventually consistent (ADR-0014). The submitted review appears immediately because
+The specification these slices build is SPEC-0001. The aggregate is eventually consistent (ADR-0014). The submitted review appears immediately because
 the review list reads the authoritative table; the average may lag by a second. The UI should not
 paper over that with an optimistic average — showing a number that is about to change is worse than
 showing one that is honestly a moment old.
