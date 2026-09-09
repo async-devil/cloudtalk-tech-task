@@ -1,0 +1,11 @@
+language: typescript
+layer: library
+
+# test-integration is package-local (Testcontainers postgres:18) and proves TASK-0002's container
+# criteria — the outbox invariant on submitReview, idempotent replay, and the drop-and-rebuild
+# proof for reviews.product_rating — written by another engineer against this package's
+# vitest.integration.config.ts. The workspace-inherited `deps: ['^:build']` already covers the
+# built dependencies it needs; no override needed here.
+tags:
+  - tier-capability
+  - liftable

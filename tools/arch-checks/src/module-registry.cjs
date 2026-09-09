@@ -18,7 +18,7 @@
 // Tier tags per ADR-0001: kernel -> facade -> capability -> app, with tooling off to the side.
 const TIER_KERNEL = ['kernel'];
 const TIER_FACADE = ['contracts', 'entities', 'observability', 'config', 'messaging'];
-const TIER_CAPABILITY = ['persistence', 'jobs', 'auth', 'styles'];
+const TIER_CAPABILITY = ['persistence', 'jobs', 'auth', 'styles', 'reviews'];
 const TIER_APP = ['api', 'app'];
 const TIER_TOOLING = ['extract-module', 'arch-checks'];
 
@@ -43,6 +43,13 @@ const SANCTIONED_TIER2_EDGES = [
   // Same reason, for auth's own hand-written SQL — the user upsert and the session middleware's
   // read both parse their rows at the boundary.
   { from: 'auth', to: 'persistence' },
+  // Same reason again, for reviews' own hand-written SQL — every row it reads comes back through
+  // rowAs/rowsAs rather than a cast (ADR-0004).
+  { from: 'reviews', to: 'persistence' },
+  // The outbox producer: insertOutboxRows must run inside the domain write's own transaction
+  // (ADR-0007 step 6), so it cannot be lifted to a composition root — reviews calls it directly
+  // from submitReview's single commit.
+  { from: 'reviews', to: 'jobs' },
 ];
 
 /**
