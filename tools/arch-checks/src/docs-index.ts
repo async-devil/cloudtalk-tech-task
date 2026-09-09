@@ -284,10 +284,13 @@ for (const adr of adrs) {
   for (const ref of adr.refs) {
     if (!adrIds.has(ref)) fail(adr.file, `\`supersedes:\` names ${ref}, which does not exist`);
   }
-  // A record can only be superseded by one that says so, and the superseded record must say it too
-  // — otherwise a reader arriving from the index reads a decision that no longer holds.
-  if (adr.refs.length > 0 && adr.status !== 'accepted') {
-    fail(adr.file, 'a record that supersedes another must itself be accepted');
+  // A record that names a `supersedes:` did so validly only if it was itself accepted at some
+  // point — `proposed` and `rejected` never took effect, so neither may claim to have superseded
+  // anything. `superseded` is allowed alongside `accepted`: a chain (A -> B -> C) means B validly
+  // superseded A while B held authority, and B does not retroactively lose having done that when C
+  // later supersedes B in turn — the historical fact is what the index still renders.
+  if (adr.refs.length > 0 && adr.status !== 'accepted' && adr.status !== 'superseded') {
+    fail(adr.file, 'a record that supersedes another must be, or have been, accepted');
   }
 }
 

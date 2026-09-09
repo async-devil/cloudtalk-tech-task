@@ -33,7 +33,8 @@ code.
 | [ADR-0014](adr/ADR-0014-rating-aggregation-as-a-projection.md) | A product's rating aggregate is an outbox-driven projection, not authoritative state | accepted | 2026-09-08 |
 | [ADR-0015](adr/ADR-0015-specification-as-a-third-document-kind.md) | The application specification is a third document kind, machine-checked like the other two | proposed | 2026-09-09 |
 | [ADR-0016](adr/ADR-0016-database-naming-and-structure-with-slug-identity.md) | Database naming and structure conventions, with slug identity for catalogue rows | accepted | 2026-09-09 |
-| [ADR-0017](adr/ADR-0017-authentication-with-capability-flags.md) | Magic-link authentication with a single-tenant session model carrying capability flags, over a default-on security baseline | accepted | 2026-09-09 |
+| [ADR-0017](adr/ADR-0017-authentication-with-capability-flags.md) | Magic-link authentication with a single-tenant session model carrying capability flags, over a default-on security baseline | superseded | 2026-09-09 |
+| [ADR-0018](adr/ADR-0018-authentication-with-moderator-capability.md) | Magic-link authentication with a two-member capability set, over a default-on security baseline | accepted | 2026-09-09 |
 
 ## Application specification
 
