@@ -74,6 +74,26 @@ const REGISTRY = {
     horizon:
       'verificationRetainMs past expiry (guidance default 7d) via auth.purgeExpiredAuthRows — must be > 0; expired rows only (ADR-0006)',
   },
+
+  // packages/persistence/migrations/0004-create-reviews.ts: the reviews bounded context
+  // (TASK-0002, SPEC-0002). The two vocabularies are seeded from @repo/entities and
+  // parity-tested, exactly like the spine's four. `product`/`review` are `truth`: canonical
+  // catalogue and domain rows that die by domain action (product deletion, erasure cascade).
+  // `product_rating` is `projection` — this classification is the ONLY reason its `product_id`
+  // primary key is legal: `entity-pk-not-table-id` exempts a projection-classed table by this
+  // registry lookup, not by name (ADR-0014). `outbox` is `evidence`, shaped exactly like the jobs
+  // spine's own outbox (ADR-0007); its horizon is deliberately not a single registry-level number
+  // for the same reason `jobs.dead_letter`'s isn't — the composition root owns the numbers.
+  'reference.product_category': { class: LIFECYCLE_CLASS.Reference },
+  'reference.review_moderation_state': { class: LIFECYCLE_CLASS.Reference },
+  'reviews.product': { class: LIFECYCLE_CLASS.Truth },
+  'reviews.review': { class: LIFECYCLE_CLASS.Truth },
+  'reviews.product_rating': { class: LIFECYCLE_CLASS.Projection },
+  'reviews.outbox': {
+    class: LIFECYCLE_CLASS.Evidence,
+    horizon:
+      'processedOutboxRetainMs past processed_at for processed rows, deadOutboxRetainMs past processed_at for dead (parked) rows — both required to exceed the reconciler staleAfterMs, applied by the spine retention pass; composition root owns the numbers (SPEC-0004)',
+  },
 };
 
 module.exports = { LIFECYCLE_CLASS, REGISTRY };
