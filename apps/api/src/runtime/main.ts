@@ -17,6 +17,7 @@ import {
   type ConfigSource,
   composeConfig,
   envFileSource,
+  isFailClosed,
   processEnvSource,
   readAppMode,
 } from '@repo/config';
@@ -31,9 +32,29 @@ import { buildApp } from './build-app.js';
 import { createDatabaseReadinessProbe } from './health-routes.js';
 import { createPlainTextMailRenderer } from './mail-renderer.js';
 import { createDevMailSender } from './mail-sender.js';
+import { startReviewsRatingWorker } from './reviews-rating-worker.js';
+import { startWorkerLivenessSupervisor } from './worker-liveness.js';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
+
+/**
+ * The reviews rating-aggregation outbox relay's poll interval (TASK-0005, SPEC-0004 open
+ * question 3: "not fixed here — it is the staleness budget... and it belongs with the other
+ * operational knobs at the composition root"). SPEC-0001 promises "within seconds"; comfortably
+ * under that.
+ */
+const REVIEWS_RATING_RELAY_INTERVAL_MS = 2_000;
+/** Explicit, not `@repo/jobs`'s internal default — `reviews-rating-worker.ts`'s `apply` wrapper
+ * must decide "is this the terminal attempt" with the SAME number the relay itself parks at. */
+const REVIEWS_RELAY_MAX_ATTEMPTS = 5;
+/** `jobs.dead_letter`'s reviews-pipeline triage window — same order of magnitude as auth's own
+ * evidence horizons above, for the same reason (long enough for a human to notice and act). */
+const REVIEWS_DEAD_LETTER_RETAIN_MS = 30 * DAY_MS;
+/** The ADR-0006 floor `REVIEWS_DEAD_LETTER_RETAIN_MS` must exceed — see
+ * `reviews-rating-worker.ts`'s own doc on why this pipeline has no real in-flight window to
+ * protect. */
+const REVIEWS_DEAD_LETTER_STALE_AFTER_MS = 5 * 60 * 1000;
 
 /**
  * How much headroom the SOCKET-level body ceiling gets over the app-level
@@ -164,6 +185,23 @@ async function main(): Promise<void> {
     },
   });
 
+  // 7c. reviews rating-aggregation outbox relay (TASK-0005, SPEC-0004, ADR-0007, ADR-0014): the
+  // first in-process background worker this composition root runs, so this is also the moment
+  // `checkWorkersHealthy`/the worker-liveness supervisor (below, step 9) start being wired at all
+  // — `health-routes.ts`'s and `worker-liveness.ts`'s own header comments both named this as the
+  // trigger. `everyMs`/the two dead-letter horizons are composition-root knobs, same precedent as
+  // step 7's `sessionRetainMs`/`verificationRetainMs`: guidance numbers owned here, not a config
+  // slice (SPEC-0004 open question 3 explicitly leaves the relay interval to this root).
+  const reviewsRatingWorker = await startReviewsRatingWorker({
+    db,
+    connection: { redisUrl: config.messaging.REDIS_URL },
+    relayEveryMs: REVIEWS_RATING_RELAY_INTERVAL_MS,
+    relayMaxAttempts: REVIEWS_RELAY_MAX_ATTEMPTS,
+    deadLetterRetainMs: REVIEWS_DEAD_LETTER_RETAIN_MS,
+    deadLetterStaleAfterMs: REVIEWS_DEAD_LETTER_STALE_AFTER_MS,
+    deadLetterRetentionEveryMs: HOUR_MS,
+  });
+
   // 8. buildApp -> listen. `session`: every session-scoped route resolves its session per-request
   // from this same auth instance's `api` + the owner db. `mode`/`cors`/`bodyCap`/`rateLimiters`
   // wire the ADR-0013 security baseline.
@@ -174,11 +212,13 @@ async function main(): Promise<void> {
     rateLimiters,
     cors: { allowedOrigins: spaOrigins },
     bodyCap: { limitBytes: config.api.HTTP_BODY_LIMIT_BYTES },
-    // `GET /health` round-trips a `SELECT 1` against this app's own pool. This composition root
-    // wires no background worker pipeline, so `checkWorkersHealthy` is omitted and `/health/
-    // worker` is simply never registered (`health-routes.ts`'s own "absent means not registered"
-    // note).
-    health: { checkDatabaseReady: createDatabaseReadinessProbe(() => sql`SELECT 1`.execute(db)) },
+    // `GET /health` round-trips a `SELECT 1` against this app's own pool. `GET /health/worker`
+    // reads the reviews rating worker's own combined probe (step 7c) — this composition root's
+    // first (and so far only) in-process background worker pipeline.
+    health: {
+      checkDatabaseReady: createDatabaseReadinessProbe(() => sql`SELECT 1`.execute(db)),
+      checkWorkersHealthy: reviewsRatingWorker.checkHealth,
+    },
     // The e2e session-mock, `test` mode ONLY — the conditional spread is the structure (a
     // fail-closed tier hands `buildApp` no `sessionMock` at all, so there is nothing for it to
     // register even if its own mode check were removed). `mailSender` only ever constructs
@@ -219,6 +259,34 @@ async function main(): Promise<void> {
   });
   obs.logger.info({ port: config.api.PORT, host: config.api.HOST }, 'api.boot.listen: ready');
 
+  // 9. worker-liveness supervisor (`worker-liveness.ts`): fail-closed tiers only — `test` mode
+  // must never have the process exit itself out from under the suite (that file's own "SCOPE"
+  // note). This is the first in-process worker the composition root has ever started, which is
+  // exactly the moment that file's header names as the trigger for wiring it.
+  const workerLivenessSupervisor = isFailClosed(mode)
+    ? startWorkerLivenessSupervisor({
+        checkHealth: reviewsRatingWorker.checkHealth,
+        onUnrecoverable: (failure) => {
+          obs.logger.error(
+            { failure },
+            'api.worker-liveness: worker half unhealthy past the grace window — exiting so the ' +
+              'process supervisor restarts it',
+          );
+          process.exit(1);
+        },
+        log: (event) => {
+          if (event.kind === 'unhealthy') {
+            obs.logger.warn({ health: event.health }, 'api.worker-liveness: worker half unhealthy');
+          } else if (event.kind === 'recovered') {
+            obs.logger.info(
+              { unhealthyForMs: event.unhealthyForMs },
+              'api.worker-liveness: worker half recovered',
+            );
+          }
+        },
+      })
+    : undefined;
+
   let shuttingDown = false;
   async function shutdown(signal: string): Promise<void> {
     if (shuttingDown) {
@@ -228,12 +296,14 @@ async function main(): Promise<void> {
     shuttingDown = true;
     obs.logger.info({ signal }, 'api.boot.shutdown: closing');
 
+    workerLivenessSupervisor?.close();
     await app.stop();
 
-    // `authRetention.close()` BEFORE `db.destroy()`: auth's own retention worker holds a Redis
-    // connection and may still be touching the db pool during its own graceful shutdown —
+    // `authRetention.close()`/`reviewsRatingWorker.close()` BEFORE `db.destroy()`: both hold a
+    // Redis connection and may still be touching the db pool during their own graceful shutdown —
     // destroying the db pool first would break that.
     await authRetention.close();
+    await reviewsRatingWorker.close();
     await rateLimiters.close();
     await magicLinkRateLimiter.close();
 
