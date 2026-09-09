@@ -1,4 +1,4 @@
-import { isAppError, ValidationError } from '@repo/kernel';
+import { InternalError, isAppError } from '@repo/kernel';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { rowAs, rowsAs } from '../src/index.js';
@@ -19,17 +19,21 @@ describe('rowAs', () => {
     expect(row).toEqual({ id: 'a', count: 1 });
   });
 
-  // INV-1 (single-row half)
-  it('throws kernel ValidationError with issue paths on a non-conforming row', () => {
+  // INV-1 (single-row half). Schema drift is a SERVER fault: the 500/non-retryable classification
+  // is the assertion here, not an implementation detail — as a `ValidationError` this same row
+  // reached the caller as a 400 carrying the offending column paths.
+  it('throws kernel InternalError (500, terminal) with issue paths on a non-conforming row', () => {
     let caught: unknown;
     try {
       rowAs(rowSchema, { id: 'a', count: 'not-a-number' });
     } catch (error) {
       caught = error;
     }
-    expect(caught).toBeInstanceOf(ValidationError);
+    expect(caught).toBeInstanceOf(InternalError);
     expect(isAppError(caught)).toBe(true);
-    const details = (caught as ValidationError).details as {
+    expect((caught as InternalError).httpStatus).toBe(500);
+    expect((caught as InternalError).retryable).toBe(false);
+    const details = (caught as InternalError).details as {
       issues: Array<{ path: string; message: string }>;
     };
     expect(details.issues.some((issue) => issue.path === 'count')).toBe(true);
@@ -53,7 +57,7 @@ describe('rowsAs', () => {
   });
 
   // INV-1
-  it('throws kernel ValidationError naming the offending row index', () => {
+  it('throws kernel InternalError naming the offending row index', () => {
     let caught: unknown;
     try {
       rowsAs(rowSchema, [
@@ -64,8 +68,8 @@ describe('rowsAs', () => {
     } catch (error) {
       caught = error;
     }
-    expect(caught).toBeInstanceOf(ValidationError);
-    expect((caught as ValidationError).message).toContain('index 1');
-    expect((caught as ValidationError).details).toMatchObject({ rowIndex: 1 });
+    expect(caught).toBeInstanceOf(InternalError);
+    expect((caught as InternalError).message).toContain('index 1');
+    expect((caught as InternalError).details).toMatchObject({ rowIndex: 1 });
   });
 });

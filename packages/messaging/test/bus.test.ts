@@ -192,6 +192,41 @@ describe('BestEffortEventBus consume boundary', () => {
     });
   });
 
+  // Review, 2026-09-09: `null` parses as valid JSON, and reading `.event` off it threw a
+  // TypeError inside the detached dispatch — an unhandled rejection instead of this boundary's
+  // terminal record. Asserted for each non-object JSON shape a publisher could put on the channel.
+  it.each([
+    'null',
+    '42',
+    '"a string"',
+    '[]',
+  ])('a non-object envelope (%s) is a terminal parse failure, not an unhandled rejection', async (payload) => {
+    await withFakeBun(async () => {
+      const rejections: unknown[] = [];
+      const onRejection = (error: unknown): void => {
+        rejections.push(error);
+      };
+      process.on('unhandledRejection', onRejection);
+
+      const bus = testBus();
+      await bus.start();
+      const subscriberFake = FakeRedisClient.instances[1];
+
+      const capture = captureStdout();
+      // biome-ignore lint/style/noNonNullAssertion: start() always registers onMessage
+      subscriberFake!.onMessage!(payload, 'bus:events:v1');
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      capture.restore();
+      process.off('unhandledRejection', onRejection);
+
+      const lines = jsonLines(capture.lines);
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toMatchObject({ code: 'VALIDATION' });
+      expect(rejections).toEqual([]);
+      await bus.close();
+    });
+  });
+
   it('a delivered type with no registered handler logs nothing and does not throw', async () => {
     await withFakeBun(async () => {
       const bus = testBus();

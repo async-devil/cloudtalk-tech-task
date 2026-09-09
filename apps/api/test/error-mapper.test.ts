@@ -162,6 +162,33 @@ describe('classifyError (ADR-0008): wire shape table', () => {
     const classified = classifyError(new ValidationError('bad', { details: { field: 'x' } }));
     expect(classified.wire.details).toEqual({ field: 'x' });
   });
+
+  // Review, 2026-09-09: genericizing `message` alone left `details` on the body, so a 5xx still
+  // shipped the internal fields that explain it — the fail-closed session error's `identityId`,
+  // a row parse's column paths. "Internals never leak" is the whole 5xx contract; assert the
+  // BODY, not just the message.
+  it('DROPS details on a 5xx: the whole body is code + generic message', () => {
+    const classified = classifyError(
+      new InternalError('no app_user row for identity', { details: { identityId: 'idn_secret' } }),
+    );
+    expect(classified.httpStatus).toBe(500);
+    expect(classified.wire).toEqual({ code: 'INTERNAL', message: 'Internal server error' });
+    expect(JSON.stringify(classified.wire)).not.toContain('idn_secret');
+  });
+
+  it('DROPS details on a 502 provider failure too (every 5xx, not just INTERNAL)', () => {
+    const classified = classifyError(
+      new ProviderError('mailer rejected', { details: { upstreamAccountId: 'acct_secret' } }),
+    );
+    expect(classified.wire).toEqual({ code: 'PROVIDER', message: 'Internal server error' });
+  });
+
+  it('KEEPS details on a 4xx: they are the caller input a 400 exists to explain', () => {
+    const classified = classifyError(
+      new ValidationError('bad', { details: { issues: [{ path: 'rating' }] } }),
+    );
+    expect(classified.wire.details).toEqual({ issues: [{ path: 'rating' }] });
+  });
 });
 
 describe('api.http.error / api.http.request counter-dimension identity', () => {
@@ -227,6 +254,28 @@ describe('finalizeErrorResponse (spec ): the two integration points are mutually
       message: 'Input validation failed',
     });
     expect(jsonLines(capture.lines)).toHaveLength(1);
+  });
+
+  // Review, 2026-09-09: this parse used to be unguarded, so a non-JSON upstream body (a proxy's
+  // HTML error page, a truncated response) rejected and threw straight out of the handler —
+  // past the uniform wire shape, past this error signal, past every header the caller wraps
+  // around the finalized response.
+  it('a non-JSON error body still finalizes to the uniform shape (and logs once)', async () => {
+    const notJson = new Response('<html>502 Bad Gateway</html>', { status: 502 });
+    const capture = captureStdout();
+    const response = await finalizeErrorResponse(notJson, context);
+    capture.restore();
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get('content-type')).toBe('application/json');
+    expect(await response.json()).toEqual({ code: 'INTERNAL', message: 'Internal server error' });
+    expect(jsonLines(capture.lines)).toHaveLength(1);
+  });
+
+  it('an empty error body finalizes rather than rejecting', async () => {
+    const empty = new Response(null, { status: 500 });
+    const response = await finalizeErrorResponse(empty, context);
+    expect(await response.json()).toEqual({ code: 'INTERNAL', message: 'Internal server error' });
   });
 
   it('a passthrough 2xx response is untouched', async () => {

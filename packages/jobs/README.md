@@ -45,7 +45,7 @@ purgeDeadLetters(options: PurgeDeadLettersOptions): Promise<number>;
 
 STAGE_RUN_OUTCOME: { Completed; ReplayNoOp; AlreadyFailed };
 JOIN_DECISION: { CompletedNow; Pending };
-RECONCILE_ACTION: { Redriven; Healed; DeadLettered };
+RECONCILE_ACTION: { Redriven; Healed; DeadLettered; Failed };
 ```
 
 ## Dependencies
@@ -108,7 +108,19 @@ from the `@repo/entities` consts, and creates `jobs.dead_letter`. Runs after
 - **INV-8** — `reconcilePipeline` derives every action from Postgres truth alone (no Redis read):
   stale `in_progress` stages and stale `Pending` owned branches are redriven
   (`Enqueuer.remove` then re-`enqueue`, dedup-safe by the state-check inside `claimStage`); stale
-  delegated branches are only aged. Test: `test-integration/reconciler.test.ts`.
+  delegated branches are only aged. Under the instance lock it re-evaluates the SAME staleness
+  predicate as the stale scan, not just the row's status: a unit legitimately re-claimed between
+  the scan and the lock is `in_progress` AND fresh, and re-driving it would put a second worker on
+  an in-flight external call. Test: `test-integration/reconciler.test.ts`.
+- **INV-12** — one unit's failure never costs the pass: a throwing transaction, `redrive` or
+  `onJoinCompleted` is contained per unit (ticked as `failed` on `jobs.reconciler.action`, one
+  `warn`, counted in `ReconcileReport.failed`), and the remaining units, branch kinds and the
+  missed-join heal still run. The unit stays stale for the next pass. Same discipline as INV-7's
+  per-row isolation. Test: `test-integration/reconciler.test.ts`.
+- **INV-13** — the uniform ceiling is ONE predicate (`internal/attempts.ts`): the claim path
+  (post-increment attempts) and the reconciler (pre-age attempts) read it through adapters that
+  name their vantage, so the last allowed attempt cannot drift between them. Test:
+  `test/attempts.test.ts`.
 - **INV-9** — `purgePipelineData`/`startRetention` throw kernel `ValidationError` BEFORE touching
   the database when any retention horizon is `<= staleAfterMs` (ADR-0006's floor — a purge
   inside the in-flight window would re-bill the provider); `Pending` outbox rows are never
@@ -157,7 +169,7 @@ ADR-0009).
 | `jobs.outbox.relay` | counter | Queue, Outcome | per row: `processed` / `failed` / `parked` |
 | `jobs.outbox.backlog` | histogram, unit `ms` | Queue | `oldestPendingAgeMs` per non-empty pass |
 | `jobs.reconciler.run` | counter | Queue | one tick per scan pass; Queue = pipeline |
-| `jobs.reconciler.action` | counter | Stage, Outcome | `redriven` / `healed` / `dead_lettered` |
+| `jobs.reconciler.action` | counter | Stage, Outcome | `redriven` / `healed` / `dead_lettered` / `failed` (one unit the pass could not reconcile; the pass continued) |
 | `jobs.retention.run` | counter | Queue | one tick per retention pass, even empty; Queue = pipeline (ADR-0006) |
 | `jobs.retention.purged` | counter | Queue, Outcome | one add per target with the rows deleted: `stage_result` / `outbox_processed` / `outbox_dead` / `dead_letter` (ADR-0006) |
 | `jobs.dead-letter.write` | counter | Stage | every dead-letter row, whatever path wrote it. Dashed rather than `jobs.dead_letter.write`: ADR-0009's segment charset is `[a-z0-9-]`, so an underscore throws at `createCounter` time — see `src/dead-letter.ts` |

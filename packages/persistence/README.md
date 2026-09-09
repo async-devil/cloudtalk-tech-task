@@ -15,7 +15,7 @@ One barrel (`src/index.ts`):
 - `runMigrations(options: MigrateOptions): Promise<MigrationReport>` — merges per-module
   migration folders into one Kysely `Migrator` run on a dedicated owner connection (ADR-0006).
 - `rowsAs<T>(schema, rows)` / `rowAs<T>(schema, row)` — the raw-SQL parse boundary
-  (ADR-0004/0011): raw rows pass a Zod row schema or throw kernel `ValidationError`.
+  (ADR-0004/0011): raw rows pass a Zod row schema or throw kernel `InternalError`.
 - `configSlice` — the persistence config slice (ADR-0005; keys frozen in).
 
 ## Dependencies
@@ -52,9 +52,12 @@ order, so this bootstrap (`0001`) lands ahead of every schema that depends on it
 
 <!-- Every invariant maps to a test id (ADR-0010.4); docs-check enforces. -->
 
-- **INV-1**: `rowsAs` throws kernel `ValidationError` naming the offending row index (and safe
+- **INV-1**: `rowsAs` throws kernel `InternalError` naming the offending row index (and safe
   issue paths, never row values) on parse failure; `rowAs` likewise for a single row — the
-  raw-SQL edge is a parse boundary, no `as unknown as` on query results anywhere.
+  raw-SQL edge is a parse boundary, no `as unknown as` on query results anywhere. The
+  classification is `InternalError` rather than `ValidationError` on purpose: a row that does not
+  match its schema is schema drift on our side, so it must not reach a caller as a 400 carrying
+  internal column paths.
   Test: `test/rows.test.ts`.
 - **INV-2**: migration folders merge into **one global lexicographic order on file name**,
   independent of the folder-list order; non-`NNNN-imperative-description.(ts|js)` entries are ignored.

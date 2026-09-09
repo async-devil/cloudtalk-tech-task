@@ -29,14 +29,27 @@ export function SignInScreen({ returnTo }: SignInScreenProps) {
   const isSubmitting = state.status === REQUEST_MAGIC_LINK_STATUS.Submitting;
 
   async function requestLink(): Promise<void> {
-    // better-auth's client RESOLVES `{ data, error }` rather than rejecting, so there is no catch
-    // to rely on here — a handler that only awaited and assumed success would treat a 429 as a
-    // sent link and tell the user to check an inbox nothing was sent to.
-    const { error } = await authClient.signIn.magicLink({
-      email: state.email.trim(),
-      callbackURL: magicLinkCallbackUrl(returnTo),
-    });
-    dispatch(error === null || error === undefined ? { type: 'sent' } : { type: 'failed', error });
+    // better-auth's client RESOLVES `{ data, error }` rather than rejecting for a server-answered
+    // failure, so the `error` branch below is the one a 429 takes — a handler that only awaited and
+    // assumed success would treat a 429 as a sent link and tell the user to check an inbox nothing
+    // was sent to.
+    //
+    // It can still REJECT, though, and that is what the catch is for (review, 2026-09-09): a
+    // dropped connection, DNS failure or an offline browser never reaches the resolve path. With
+    // no `failed` dispatched, the machine stayed in `Submitting` forever — the form disabled, no
+    // error shown, and no way back short of reloading the page. Every exit from this call now ends
+    // in a dispatch, so `Submitting` is always left.
+    try {
+      const { error } = await authClient.signIn.magicLink({
+        email: state.email.trim(),
+        callbackURL: magicLinkCallbackUrl(returnTo),
+      });
+      dispatch(
+        error === null || error === undefined ? { type: 'sent' } : { type: 'failed', error },
+      );
+    } catch (error) {
+      dispatch({ type: 'failed', error });
+    }
   }
 
   return (

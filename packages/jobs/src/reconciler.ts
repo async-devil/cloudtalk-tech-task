@@ -6,6 +6,7 @@ import { type Kysely, sql } from 'kysely';
 import type { PipelineTableContract } from './contract.js';
 import { type DeadLetterRecord, writeDeadLetter } from './dead-letter.js';
 import { acquireInstanceLock } from './internal/advisory-lock.js';
+import { attemptsExhausted } from './internal/attempts.js';
 import { forEachWithConcurrency } from './internal/concurrency.js';
 import { toSegment } from './internal/identifiers.js';
 import {
@@ -47,6 +48,9 @@ export const RECONCILE_ACTION = {
   Redriven: 'redriven',
   Healed: 'healed',
   DeadLettered: 'dead_lettered',
+  /** One unit's reconcile threw and the pass carried on without it — see
+   * {@link reconcileStaleUnits}. */
+  Failed: 'failed',
 } as const;
 export type ReconcileAction = (typeof RECONCILE_ACTION)[keyof typeof RECONCILE_ACTION];
 
@@ -68,6 +72,9 @@ export interface ReconcileReport {
   readonly redriven: number;
   readonly healed: number;
   readonly deadLettered: number;
+  /** Units this pass could not reconcile (their errors were isolated, not propagated). A pass
+   * that reports `failed > 0` did NOT cover its whole backlog; the next pass retries them. */
+  readonly failed: number;
 }
 
 function staleIntervalFragment(staleAfterMs: number) {
@@ -91,11 +98,15 @@ interface StaleUnitReconcile<TUnit> {
   /** The still-open status this pass acts on; anything else means a normal completion raced the
    * scan between the stale SELECT and acquiring the lock. */
   readonly openStatusId: number;
-  /** Re-read the unit's current status + attempts under the lock; `undefined` if the row is gone. */
+  /** Re-read the unit's current status, attempts AND staleness under the lock; `undefined` if the
+   * row is gone. `isStale` re-evaluates the same predicate the stale SELECT used — see the
+   * re-check in {@link reconcileStaleUnits} for why re-reading the row alone is not enough. */
   reclaim(
     trx: Kysely<unknown>,
     unit: TUnit,
-  ): Promise<{ readonly statusId: number; readonly attempts: number } | undefined>;
+  ): Promise<
+    { readonly statusId: number; readonly attempts: number; readonly isStale: boolean } | undefined
+  >;
   /** Bump attempts (+ touch `updated_at` where the table has no trigger). */
   age(trx: Kysely<unknown>, unit: TUnit): Promise<void>;
   /** The dead-letter record written when attempts reach the uniform ceiling (ADR-0007). */
@@ -108,49 +119,90 @@ interface StaleUnitReconcile<TUnit> {
 /** Ceiling ⇒ dead-letter; else `age` (attempts++) and, if the unit kind re-drives, `remove` then
  * `enqueue` (the state-check inside `claimStage`/`runPipelineBranch` makes a duplicate delivery a
  * no-op, so redrive is safe even when the original job was alive). Independent units — distinct
- * instance locks — are processed with bounded concurrency (amendment). */
+ * instance locks — are processed with bounded concurrency (amendment), and one unit's failure is
+ * isolated from the rest of the pass (`failed` in the returned tally). */
 async function reconcileStaleUnits<TUnit>(
   db: Kysely<unknown>,
   contract: PipelineTableContract,
   attemptsCeiling: number,
   units: ReadonlyArray<TUnit>,
   spec: StaleUnitReconcile<TUnit>,
-): Promise<{ readonly redriven: number; readonly deadLettered: number }> {
+): Promise<{
+  readonly redriven: number;
+  readonly deadLettered: number;
+  readonly failed: number;
+}> {
   let redriven = 0;
   let deadLettered = 0;
+  let failed = 0;
 
   await forEachWithConcurrency(units, RECONCILE_CONCURRENCY, async (unit) => {
-    const outcome = await db.transaction().execute(async (trx) => {
-      await acquireInstanceLock(trx, contract.pipeline, spec.instanceIdOf(unit));
+    // Per-unit isolation, the same discipline `relayOutboxBatch` applies per row (INV-7; review,
+    // 2026-09-09). Everything below reaches outside this process — the transaction, and `redrive`'s
+    // two Redis round-trips — so any one unit can fail transiently. Left to propagate, that one
+    // failure abandoned every unit still queued behind it AND every later step of the pass (the
+    // other branch kinds, the missed-join heal), turning a single Redis blip into a pass that
+    // reconciled almost nothing. The unit stays stale and is picked up by the next pass; nothing
+    // here is a state transition that a retry would double-apply.
+    try {
+      const outcome = await db.transaction().execute(async (trx) => {
+        await acquireInstanceLock(trx, contract.pipeline, spec.instanceIdOf(unit));
 
-      const current = await spec.reclaim(trx, unit);
-      if (current === undefined) {
-        return 'gone' as const;
-      }
-      if (current.statusId !== spec.openStatusId) {
-        return 'already-moved' as const;
-      }
-      if (current.attempts >= attemptsCeiling) {
-        await writeDeadLetter(trx, contract, spec.deadLetterRecord(unit, current.attempts));
-        return 'dead-lettered' as const;
-      }
-      await spec.age(trx, unit);
-      return 'aged' as const;
-    });
+        const current = await spec.reclaim(trx, unit);
+        if (current === undefined) {
+          return 'gone' as const;
+        }
+        if (current.statusId !== spec.openStatusId) {
+          return 'already-moved' as const;
+        }
+        // The staleness predicate is re-evaluated UNDER THE LOCK, not just the row re-read
+        // (review, 2026-09-09). The stale SELECT and this lock acquisition are separated by a
+        // real window, and a worker that legitimately re-claimed the unit in that window
+        // refreshed `updated_at` while leaving the status exactly where the scan found it —
+        // `in_progress`/`Pending`. Checking status alone therefore cannot tell "stalled" from
+        // "actively being worked", and re-driving the latter puts a second worker on a stage
+        // whose external call is in flight. Re-reading staleness closes that window: the lock
+        // serializes this transaction against the claim that refreshed the row.
+        if (!current.isStale) {
+          return 'reclaimed-elsewhere' as const;
+        }
+        if (attemptsExhausted(current.attempts, attemptsCeiling)) {
+          await writeDeadLetter(trx, contract, spec.deadLetterRecord(unit, current.attempts));
+          return 'dead-lettered' as const;
+        }
+        await spec.age(trx, unit);
+        return 'aged' as const;
+      });
 
-    // Increments run after the awaited transaction settles; the `+= 1` itself has no interleaved
-    // `await`, so concurrent units never corrupt the tallies (single-threaded JS).
-    if (outcome === 'dead-lettered') {
-      deadLettered += 1;
-      reconcilerActionCounter.add(1, { stage: spec.stage, outcome: RECONCILE_ACTION.DeadLettered });
-    } else if (outcome === 'aged' && spec.redrive !== undefined) {
-      await spec.redrive(unit);
-      redriven += 1;
-      reconcilerActionCounter.add(1, { stage: spec.stage, outcome: RECONCILE_ACTION.Redriven });
+      // Increments run after the awaited transaction settles; the `+= 1` itself has no interleaved
+      // `await`, so concurrent units never corrupt the tallies (single-threaded JS).
+      if (outcome === 'dead-lettered') {
+        deadLettered += 1;
+        reconcilerActionCounter.add(1, {
+          stage: spec.stage,
+          outcome: RECONCILE_ACTION.DeadLettered,
+        });
+      } else if (outcome === 'aged' && spec.redrive !== undefined) {
+        await spec.redrive(unit);
+        redriven += 1;
+        reconcilerActionCounter.add(1, { stage: spec.stage, outcome: RECONCILE_ACTION.Redriven });
+      }
+    } catch (error) {
+      failed += 1;
+      reconcilerActionCounter.add(1, { stage: spec.stage, outcome: RECONCILE_ACTION.Failed });
+      obs.logger.warn(
+        {
+          pipeline: contract.pipeline,
+          stage: spec.stage,
+          instanceId: spec.instanceIdOf(unit),
+          cause: String(error),
+        },
+        'reconcilePipeline: stale unit failed; the pass continues without it',
+      );
     }
   });
 
-  return { redriven, deadLettered };
+  return { redriven, deadLettered, failed };
 }
 
 /** Stale `in_progress` stages (step 1): always re-driven after aging. */
@@ -160,7 +212,11 @@ async function reconcileStaleStages(
   binding: ReconcilerStageBinding,
   staleAfterMs: number,
   attemptsCeiling: number,
-): Promise<{ readonly redriven: number; readonly deadLettered: number }> {
+): Promise<{
+  readonly redriven: number;
+  readonly deadLettered: number;
+  readonly failed: number;
+}> {
   const statusColumn = `${binding.stage}_stage_status_id`;
   const attemptsColumn = `${binding.stage}_attempts`;
   const updatedAtColumn = `${binding.stage}_updated_at`;
@@ -179,7 +235,8 @@ async function reconcileStaleStages(
     instanceIdOf: (instanceId) => instanceId,
     reclaim: async (trx, instanceId) => {
       const current = await sql`
-        SELECT ${sql.id(statusColumn)} AS stage_status_id, ${sql.id(attemptsColumn)} AS attempts
+        SELECT ${sql.id(statusColumn)} AS stage_status_id, ${sql.id(attemptsColumn)} AS attempts,
+               ${sql.id(updatedAtColumn)} < ${staleIntervalFragment(staleAfterMs)} AS is_stale
         FROM ${sql.table(instanceTableRef(contract))}
         WHERE ${sql.id(contract.instanceIdColumn)} = ${instanceId}
       `.execute(trx);
@@ -187,8 +244,12 @@ async function reconcileStaleStages(
       if (row === undefined) {
         return undefined;
       }
-      const { stage_status_id: statusId, attempts } = rowAs(stageAttemptsRowSchema, row);
-      return { statusId, attempts };
+      const {
+        stage_status_id: statusId,
+        attempts,
+        is_stale: isStale,
+      } = rowAs(stageAttemptsRowSchema, row);
+      return { statusId, attempts, isStale };
     },
     age: async (trx, instanceId) => {
       await sql`
@@ -224,7 +285,11 @@ async function reconcileStaleBranches(
   attemptsCeiling: number,
   kind: BranchKindId,
   redrive: boolean,
-): Promise<{ readonly redriven: number; readonly deadLettered: number }> {
+): Promise<{
+  readonly redriven: number;
+  readonly deadLettered: number;
+  readonly failed: number;
+}> {
   const staleRows = await sql`
     SELECT ${sql.id(contract.instanceIdColumn)} AS instance_id, branch_key
     FROM ${sql.table(branchTableRef(contract))}
@@ -241,7 +306,8 @@ async function reconcileStaleBranches(
     instanceIdOf: (stale) => stale.instance_id,
     reclaim: async (trx, stale) => {
       const current = await sql`
-        SELECT branch_status_id, attempts
+        SELECT branch_status_id, attempts,
+               updated_at < ${staleIntervalFragment(staleAfterMs)} AS is_stale
         FROM ${sql.table(branchTableRef(contract))}
         WHERE ${sql.id(contract.instanceIdColumn)} = ${stale.instance_id}
           AND stage = ${binding.stage}
@@ -251,8 +317,12 @@ async function reconcileStaleBranches(
       if (row === undefined) {
         return undefined;
       }
-      const { branch_status_id: statusId, attempts } = rowAs(branchAttemptsRowSchema, row);
-      return { statusId, attempts };
+      const {
+        branch_status_id: statusId,
+        attempts,
+        is_stale: isStale,
+      } = rowAs(branchAttemptsRowSchema, row);
+      return { statusId, attempts, isStale };
     },
     age: async (trx, stale) => {
       await sql`
@@ -290,9 +360,9 @@ async function healMissedJoins(
   contract: PipelineTableContract,
   binding: ReconcilerStageBinding,
   staleAfterMs: number,
-): Promise<number> {
+): Promise<{ readonly healed: number; readonly failed: number }> {
   if (binding.onJoinCompleted === undefined) {
-    return 0;
+    return { healed: 0, failed: 0 };
   }
   const statusColumn = `${binding.stage}_stage_status_id`;
   const updatedAtColumn = `${binding.stage}_updated_at`;
@@ -318,12 +388,30 @@ async function healMissedJoins(
 
   const onJoinCompleted = binding.onJoinCompleted;
   let healed = 0;
+  let failed = 0;
   for (const instanceId of instanceIds) {
-    await onJoinCompleted(instanceId);
-    healed += 1;
-    reconcilerActionCounter.add(1, { stage: binding.stage, outcome: RECONCILE_ACTION.Healed });
+    // Isolated per candidate for the same reason the stale units above are (review, 2026-09-09):
+    // `onJoinCompleted` is the caller's own continuation, and one instance whose continuation
+    // throws must not cost every candidate behind it — nor the remaining stages of the pass.
+    try {
+      await onJoinCompleted(instanceId);
+      healed += 1;
+      reconcilerActionCounter.add(1, { stage: binding.stage, outcome: RECONCILE_ACTION.Healed });
+    } catch (error) {
+      failed += 1;
+      reconcilerActionCounter.add(1, { stage: binding.stage, outcome: RECONCILE_ACTION.Failed });
+      obs.logger.warn(
+        {
+          pipeline: contract.pipeline,
+          stage: binding.stage,
+          instanceId,
+          cause: String(error),
+        },
+        'reconcilePipeline: missed-join heal failed; the pass continues without it',
+      );
+    }
   }
-  return healed;
+  return { healed, failed };
 }
 
 /**
@@ -341,6 +429,7 @@ export async function reconcilePipeline(options: ReconcilerOptions): Promise<Rec
   let redriven = 0;
   let healed = 0;
   let deadLettered = 0;
+  let failed = 0;
 
   for (const binding of options.stages) {
     const stale = await reconcileStaleStages(
@@ -352,6 +441,7 @@ export async function reconcilePipeline(options: ReconcilerOptions): Promise<Rec
     );
     redriven += stale.redriven;
     deadLettered += stale.deadLettered;
+    failed += stale.failed;
 
     const owned = await reconcileStaleBranches(
       options.db,
@@ -364,6 +454,7 @@ export async function reconcilePipeline(options: ReconcilerOptions): Promise<Rec
     );
     redriven += owned.redriven;
     deadLettered += owned.deadLettered;
+    failed += owned.failed;
 
     const delegated = await reconcileStaleBranches(
       options.db,
@@ -375,11 +466,19 @@ export async function reconcilePipeline(options: ReconcilerOptions): Promise<Rec
       false,
     );
     deadLettered += delegated.deadLettered;
+    failed += delegated.failed;
 
-    healed += await healMissedJoins(options.db, options.contract, binding, options.staleAfterMs);
+    const joins = await healMissedJoins(
+      options.db,
+      options.contract,
+      binding,
+      options.staleAfterMs,
+    );
+    healed += joins.healed;
+    failed += joins.failed;
   }
 
-  return { redriven, healed, deadLettered };
+  return { redriven, healed, deadLettered, failed };
 }
 
 /**

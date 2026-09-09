@@ -7,6 +7,7 @@ import type { PipelineTableContract } from './contract.js';
 import { writeDeadLetter } from './dead-letter.js';
 import { acquireInstanceLock } from './internal/advisory-lock.js';
 import { readAttemptResult, writeAttemptResult } from './internal/attempt-result.js';
+import { claimReachedCeiling } from './internal/attempts.js';
 import { truncateReason } from './internal/reason.js';
 import { attemptsRowSchema, branchStatusIdRowSchema, openCountRowSchema } from './internal/rows.js';
 import { branchTableRef } from './internal/table-refs.js';
@@ -198,7 +199,7 @@ async function claimBranch(
     }
     const { attempts } = rowAs(attemptsRowSchema, claimedRow);
 
-    if (attempts > attemptsCeiling) {
+    if (claimReachedCeiling(attempts, attemptsCeiling)) {
       await writeDeadLetter(trx, contract, {
         instanceId: branch.instanceId,
         stage: branch.stage,

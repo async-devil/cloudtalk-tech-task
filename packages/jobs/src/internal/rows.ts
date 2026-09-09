@@ -7,15 +7,21 @@ import { z } from 'zod';
 // `rowsAs`/`rowAs`; a schema keyed by a runtime-computed column name would defeat the point).
 
 export const stageStatusIdRowSchema = z.object({ stage_status_id: z.number().int() });
+// `is_stale` is computed in the SELECT (the same `updated_at < now() - interval` predicate the
+// reconciler's stale scan uses) rather than derived in TS from a timestamp: staleness must be
+// judged by the database clock that wrote `updated_at`, and comparing it under the row's advisory
+// lock is what makes the reconciler's re-check meaningful.
 export const stageAttemptsRowSchema = z.object({
   stage_status_id: z.number().int(),
   attempts: z.number().int(),
+  is_stale: z.boolean(),
 });
 export const attemptsRowSchema = z.object({ attempts: z.number().int() });
 export const branchStatusIdRowSchema = z.object({ branch_status_id: z.number().int() });
 export const branchAttemptsRowSchema = z.object({
   branch_status_id: z.number().int(),
   attempts: z.number().int(),
+  is_stale: z.boolean(),
 });
 export const branchKeyRowSchema = z.object({ instance_id: z.string(), branch_key: z.string() });
 export const instanceIdRowSchema = z.object({ instance_id: z.string() });

@@ -100,7 +100,7 @@ export function createBestEffortEventBus<TEvent extends { readonly type: string 
   const handlers = new Map<string, Array<(event: TEvent) => Promise<void>>>();
   const logPublishFailureOnce = createIntervalSuppressor();
 
-  function terminalParseFailure(error: unknown, message: string): void {
+  function terminalFailure(error: unknown, message: string): void {
     failSpan(error, {
       errorCounter: eventHandleCounter,
       attributes: { queue: UNKNOWN_EVENT_TYPE, outcome: EVENT_OUTCOME.Terminal },
@@ -114,8 +114,21 @@ export function createBestEffortEventBus<TEvent extends { readonly type: string 
     try {
       envelope = JSON.parse(raw);
     } catch (error) {
-      terminalParseFailure(
+      terminalFailure(
         new ValidationError(`messaging bus: envelope is not valid JSON: ${String(error)}`),
+        'messaging.bus: envelope parse failed',
+      );
+      return;
+    }
+
+    // The envelope's SHAPE is checked before anything is read off it (review, 2026-09-09).
+    // `JSON.parse` happily returns `null`, a number or a string, and `record.event` on a `null`
+    // envelope throws a TypeError from inside this detached async call — surfacing as an unhandled
+    // rejection rather than as the terminal parse failure this boundary exists to record. A
+    // payload that is not an object is exactly that: an envelope that failed to parse.
+    if (typeof envelope !== 'object' || envelope === null || Array.isArray(envelope)) {
+      terminalFailure(
+        new ValidationError('messaging bus: envelope is not a JSON object'),
         'messaging.bus: envelope parse failed',
       );
       return;
@@ -124,7 +137,7 @@ export function createBestEffortEventBus<TEvent extends { readonly type: string 
     const record = envelope as BusEnvelope;
     const parsed = options.schema.safeParse(record.event);
     if (!parsed.success) {
-      terminalParseFailure(
+      terminalFailure(
         new ValidationError(
           `messaging bus: event failed schema validation: ${parsed.error.message}`,
         ),
@@ -187,7 +200,14 @@ export function createBestEffortEventBus<TEvent extends { readonly type: string 
     },
     async start(): Promise<void> {
       await subscriber.subscribe(BUS_CHANNEL, (message) => {
-        void handleMessage(message);
+        // The subscribe callback is synchronous, so dispatch cannot be awaited here — but it MUST
+        // be caught (review, 2026-09-09). Every failure `handleMessage` anticipates is already
+        // recorded inside it; this catch is for the ones it does not, which would otherwise leave
+        // the process as an unhandled rejection and take a bus subscriber's crash policy with
+        // them. Routed to the same terminal outcome as any other undeliverable message.
+        void handleMessage(message).catch((error: unknown) => {
+          terminalFailure(error, 'messaging.bus: message dispatch failed');
+        });
       });
     },
     close(): Promise<void> {

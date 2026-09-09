@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { ERROR_CODE, isAppError, RateLimitedError } from '@repo/kernel';
 import {
   createSlidingWindowRateLimiter,
@@ -39,8 +40,10 @@ const rateLimitDegradedCounter = obs.createCounter(API_HTTP_RATE_LIMIT_DEGRADED_
 export interface RateLimitPolicyConfig {
   readonly authPerMinute: number;
   readonly unauthenticatedPostPerMinute: number;
-  /** `HTTP_TRUST_PROXY`: only trust `X-Forwarded-For`'s first hop when a reverse proxy actually
-   * sits in front — trusting the header from a direct connection is spoofable. */
+  /** `HTTP_TRUST_PROXY`: only read `X-Forwarded-For` at all when a reverse proxy actually sits in
+   * front — the header is client-writable, so on a direct connection every hop in it is a
+   * fiction. Even with the flag on, only the hop the trusted proxy itself appended is used (see
+   * {@link rateLimitSubjectOf}). */
   readonly trustProxy: boolean;
 }
 
@@ -65,15 +68,54 @@ export interface RateLimiters {
  */
 const DIRECT_CONNECTION_SUBJECT = 'direct';
 
-function clientIpOf(request: Request, trustProxy: boolean): string {
-  if (trustProxy) {
-    const forwarded = request.headers.get('x-forwarded-for');
-    const firstHop = forwarded?.split(',')[0]?.trim();
-    if (firstHop !== undefined && firstHop.length > 0) {
-      return firstHop;
-    }
+/** How much of the subject hash is kept. 128 bits of SHA-256 hex: collision-free in practice for
+ * a keyspace of client IPs, and short enough that a Redis key stays cheap. */
+const SUBJECT_HASH_LENGTH = 32;
+
+/**
+ * The address the TRUSTED PROXY observed, i.e. `X-Forwarded-For`'s RIGHTMOST hop — never the
+ * leftmost one (review, 2026-09-09).
+ *
+ * `X-Forwarded-For` is appended to left-to-right, so the leftmost entry is whatever the original
+ * client wrote and the rightmost is the only entry the proxy in front of us produced itself.
+ * Keying on the leftmost hop hands every client its own bucket namespace: rotate the header value
+ * per request and each request lands in a fresh, empty window — the limiter is bypassed outright
+ * while still appearing to work. The rightmost hop cannot be forged that way, because the trusted
+ * proxy overwrites that position with the peer address it actually accepted the connection from.
+ *
+ * This assumes EXACTLY ONE trusted proxy in front of the app, which is what `HTTP_TRUST_PROXY`
+ * asserts (deploy topology, ADR-0013). Chaining a second proxy without teaching this function how
+ * many hops to skip would key on the inner proxy's address and collapse all traffic onto one
+ * bucket — coarser, i.e. the fail-toward-restrictive direction, never a bypass.
+ */
+function forwardedForSubjectOf(request: Request, trustProxy: boolean): string {
+  if (!trustProxy) {
+    return DIRECT_CONNECTION_SUBJECT;
   }
-  return DIRECT_CONNECTION_SUBJECT;
+  const hops = request.headers.get('x-forwarded-for')?.split(',') ?? [];
+  const proxyHop = hops.at(-1)?.trim();
+  return proxyHop !== undefined && proxyHop.length > 0 ? proxyHop : DIRECT_CONNECTION_SUBJECT;
+}
+
+/**
+ * The limiter subject key for a request: the trusted-proxy hop above, HASHED.
+ *
+ * The hash is a containment boundary, not obfuscation (review, 2026-09-09). The subject is
+ * interpolated into the limiter's Redis key, and the sliding-window script keeps a companion
+ * `{key}:seq` counter beside the window ZSET. A raw subject is therefore free to name another
+ * subject's internal key — a subject ending in `:seq` collides with the counter of the subject
+ * before it, Redis answers `WRONGTYPE`, and the limiter's fail-open branch turns that into an
+ * unlimited allow for whoever chose the value. Hashing to a fixed-length hex string makes the
+ * subject portion of the key structurally incapable of naming anything but itself.
+ *
+ * Exported for `test/rate-limit.test.ts`: both properties above are security properties, so they
+ * are asserted directly rather than inferred from a limiter's behaviour.
+ */
+export function rateLimitSubjectOf(request: Request, trustProxy: boolean): string {
+  return createHash('sha256')
+    .update(forwardedForSubjectOf(request, trustProxy))
+    .digest('hex')
+    .slice(0, SUBJECT_HASH_LENGTH);
 }
 
 async function enforce(
@@ -137,13 +179,17 @@ export function createRateLimiters(options: {
       await Promise.all([auth.close(), unauthenticatedPost.close()]);
     },
     async checkAuth(request: Request): Promise<void> {
-      await enforce(auth, RATE_LIMIT_BUCKET.Auth, clientIpOf(request, options.config.trustProxy));
+      await enforce(
+        auth,
+        RATE_LIMIT_BUCKET.Auth,
+        rateLimitSubjectOf(request, options.config.trustProxy),
+      );
     },
     async checkUnauthenticatedPost(request: Request): Promise<void> {
       await enforce(
         unauthenticatedPost,
         RATE_LIMIT_BUCKET.UnauthenticatedPost,
-        clientIpOf(request, options.config.trustProxy),
+        rateLimitSubjectOf(request, options.config.trustProxy),
       );
     },
   };

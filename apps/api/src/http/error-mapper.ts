@@ -48,25 +48,41 @@ export interface ClassifiedError {
   readonly httpStatus: number;
 }
 
+/** The generic body a 5xx always carries: no message of its own, no details (ADR-0008 — a server
+ * fault is the client's business only as a status code). */
+const SERVER_FAULT_MESSAGE = 'Internal server error';
+
+function isServerFault(httpStatus: number): boolean {
+  return httpStatus >= 500;
+}
+
 /**
  * The one error classification (ADR-0008): `isAppError` detection only — never name/message
- * matching. 5xx bodies replace `message` with a generic string; internals never leak. Anything
- * that isn't an `AppError` is `INTERNAL`/500 generic.
+ * matching. 5xx bodies replace `message` with a generic string AND DROP `details`; internals never
+ * leak. Anything that isn't an `AppError` is `INTERNAL`/500 generic.
+ *
+ * Dropping `details` on a 5xx is the whole guarantee, not a nicety (review, 2026-09-09):
+ * `details` is where an internal error carries the fields that explain it — the `identityId` on
+ * `resolveRequestSession`'s fail-closed `InternalError`, a row's column paths on a `rowsAs`
+ * mismatch — and genericizing `message` alone shipped every one of them to the caller. A 4xx keeps
+ * its details: those are the client's own input, and telling them what they got wrong is the point.
  */
 export function classifyError(error: unknown): ClassifiedError {
   if (isAppError(error)) {
     const httpStatus = error.httpStatus;
-    const message = httpStatus >= 500 ? 'Internal server error' : error.message;
+    if (isServerFault(httpStatus)) {
+      return { httpStatus, wire: { code: error.code, message: SERVER_FAULT_MESSAGE } };
+    }
     return {
       httpStatus,
       wire: {
         code: error.code,
-        message,
+        message: error.message,
         ...(error.details !== undefined ? { details: error.details } : {}),
       },
     };
   }
-  return { httpStatus: 500, wire: { code: 'INTERNAL', message: 'Internal server error' } };
+  return { httpStatus: 500, wire: { code: 'INTERNAL', message: SERVER_FAULT_MESSAGE } };
 }
 
 function failSpanForRequest(error: unknown, context: HttpRequestContext, httpStatus: number): void {
@@ -128,6 +144,22 @@ function isApiErrorShape(value: unknown): value is ApiErrorShape {
   );
 }
 
+interface OrpcErrorBody {
+  readonly code?: string;
+  readonly message?: string;
+  readonly data?: unknown;
+}
+
+/** Reads an upstream error body, resolving to an empty body when it is not JSON — see the call
+ * site in {@link finalizeErrorResponse} for why this never rejects. */
+async function readErrorBody(response: Response): Promise<OrpcErrorBody> {
+  try {
+    return ((await response.json()) ?? {}) as OrpcErrorBody;
+  } catch {
+    return {};
+  }
+}
+
 function jsonResponse(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -152,14 +184,20 @@ export async function finalizeErrorResponse(
   if (response.ok) {
     return response;
   }
-  const body = (await response.json()) as { code?: string; message?: string; data?: unknown };
+  // The parse is guarded because this function is the LAST thing between an error and the wire
+  // (review, 2026-09-09): a body that is not JSON at all — a proxy's HTML error page, a truncated
+  // response — used to reject here and throw straight out of the handler, skipping the uniform
+  // wire shape, the error signal below, and every header the caller wraps around this response.
+  // An unreadable body is simply an error with nothing to read: fall through to the generic
+  // mapping with `code` undefined, which is the same path an unrecognised oRPC code takes.
+  const body = await readErrorBody(response);
   if (isApiErrorShape(body.data)) {
     return jsonResponse(body.data, response.status);
   }
   const wire: ApiErrorShape =
     body.code === 'BAD_REQUEST'
       ? { code: 'VALIDATION', message: 'Input validation failed' }
-      : { code: 'INTERNAL', message: 'Internal server error' };
+      : { code: 'INTERNAL', message: SERVER_FAULT_MESSAGE };
   failSpanForRequest(
     new Error(`oRPC pipeline error before a handler ran: ${body.code ?? '(unknown)'}`),
     context,

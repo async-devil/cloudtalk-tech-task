@@ -7,6 +7,7 @@ import type { PipelineTableContract } from './contract.js';
 import { writeDeadLetter } from './dead-letter.js';
 import { acquireInstanceLock } from './internal/advisory-lock.js';
 import { readAttemptResult, writeAttemptResult } from './internal/attempt-result.js';
+import { claimReachedCeiling } from './internal/attempts.js';
 import { attemptsRowSchema, stageStatusIdRowSchema } from './internal/rows.js';
 import { instanceTableRef } from './internal/table-refs.js';
 import { performExternalCallWithRouting } from './internal/terminal-routing.js';
@@ -102,7 +103,7 @@ export async function claimStage(options: ClaimStageOptions): Promise<ClaimStage
     }
     const { attempts } = rowAs(attemptsRowSchema, claimedRow);
 
-    if (attempts > attemptsCeiling) {
+    if (claimReachedCeiling(attempts, attemptsCeiling)) {
       await writeDeadLetter(trx, contract, {
         instanceId,
         stage,
