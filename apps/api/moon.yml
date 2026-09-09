@@ -1,0 +1,57 @@
+language: typescript
+layer: application
+
+tags:
+  - tier-app
+
+tasks:
+  # Applies the persistence migrations folder through @repo/persistence runMigrations on the
+  # owner connection (ADR-0006). Needs a reachable Postgres + APP_MODE/DATABASE_URL in the
+  # environment, so it never runs implicitly in CI — a scratch-DB CI job invokes it explicitly
+  # against a throwaway database.
+  migrate:
+    command: 'bun src/db/migrate.ts'
+    deps:
+      - '^:build'
+    options:
+      cache: false
+      runInCI: false
+  # Renders `.env.example` from the composed config slice schemas and either writes it
+  # (`-- --write`, the generator IS the writer — hand edits are what `env-example-check` below
+  # exists to catch) or, with no args, diffs it against the committed file (exit 1 on drift).
+  env-example:
+    command: 'bun src/config/env-example.ts'
+    deps:
+      - '^:build'
+    options:
+      cache: false
+      runInCI: false
+  # `.env.example` sync check: `env-example` in check mode (no args), gated in CI. Named/placed
+  # on `api` rather than root's tooling tier — moon's own project-tag constraints forbid a
+  # `tier-tooling` project depending on a `tier-app` one, and this check inherently needs
+  # `apps/api`'s composed `APP_CONFIG_SLICES` (built dist, via `^:build`), so it lives where that
+  # dependency is legal.
+  env-example-check:
+    command: 'bun src/config/env-example.ts'
+    deps:
+      - '^:build'
+    inputs:
+      - 'src/config/**/*'
+      - '/packages/config/src/**/*'
+      - '/packages/*/src/config-slice.ts'
+      - '/.env.example'
+    options:
+      runInCI: true
+
+  # Overrides the workspace-inherited `vitest run`, which runs on Node. Elysia calls
+  # `Promise.withResolvers` (Node 22+), so on an older Node every test that constructs the app dies
+  # inside the framework. This suite therefore runs on the runtime the application actually ships
+  # on — see the header in `vitest.config.ts` for the zod resolution that comes with it.
+  # Vitest's own entry, invoked through bun directly rather than through `bun x`: the `x`
+  # subcommand resolves against whatever bun is first on PATH, and a machine with an older bun
+  # beside the pinned one answers `Script not found "x"`. Naming the entry file removes the
+  # ambiguity.
+  test:
+    command: 'bun ../../node_modules/vitest/vitest.mjs run'
+    deps:
+      - '^:build'

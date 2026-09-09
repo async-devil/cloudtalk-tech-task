@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // apps/api is a leaf (nothing imports its build output — `main.ts`/`migrate.ts` run directly
+    // via `bun`, never via a compiled `dist/`), and its migrations live outside `src/`, forcing
+    // `rootDir: "."` the moment they're emitted alongside it. That combination would make
+    // `dist/` mirror as `dist/src/runtime/...` instead of `dist/runtime/...`, which silently
+    // breaks the `observability-sdk-entry-only-in-runtime` / `adapters-and-sdk-only-in-runtime`
+    // dep-cruiser rules' `apps/[^/]+/src/runtime/` path match the moment a runtime file first
+    // imports `@repo/observability/sdk` — those rules match the *source* tree, not any emitted
+    // one. `noEmit` (no `outDir`/`rootDir`/`composite`) sidesteps the whole mirroring question:
+    // `tsc` still fully typechecks `src/` + `migrations/` (the inherited `build`/`typecheck`
+    // tasks both still run `tsc`), it just never emits, so dep-cruiser only ever sees the real
+    // source paths.
+    "noEmit": true,
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["src", "migrations"]
+}
