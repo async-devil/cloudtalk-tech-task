@@ -3,7 +3,7 @@ id: SPEC-0003
 title: The API — contract namespaces, wire shapes, pagination and failure
 status: accepted
 supersedes: []
-adr: [ADR-0004, ADR-0008, ADR-0016, ADR-0018]
+adr: [ADR-0004, ADR-0008, ADR-0016, ADR-0018, ADR-0019]
 date: 2026-09-09
 ---
 
@@ -81,7 +81,8 @@ productDetail = productSummary + { description }
 
 reviewSummary = {
   token, rating, title, body,
-  authorLabel: z.string(),          // never an email — SPEC-0001 open question 1
+  authorLabel: z.string(),          // the email's local part, truncated to 24 chars, never the
+                                     // email itself — SPEC-0001 open question 1 (resolved)
   authoredByViewer: z.boolean(),    // computed per request; drives the own-review block
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),      // differs from createdAt ⟺ edited
@@ -256,15 +257,16 @@ client IP, both answering `429` with `Retry-After`. That list is marked frozen i
 TASK-0003 asks for two things it does not cover: a limit on **unauthenticated reads**, and a limit on
 **review submission by an authenticated user**.
 
-Extending a frozen security baseline is a decision, not a specification detail. This document states
-the requirement and its proposed shape; the buckets are not added until a record accepts them (see
-Open question 1):
+Extending a frozen security baseline is a decision, not a specification detail, which is why ADR-0019
+is the record that accepts them rather than this document deciding it unilaterally (see Open
+question 1, resolved):
 
 - `anonymous-read` — GET with no resolved session, keyed by client IP.
-- `review-submission` — `reviews.submit`, `reviews.update` and `products.create` with a session,
-  keyed by the user's
+- `review-submission` — `reviews.submit` and `reviews.update` with a session, keyed by the user's
   internal id (never a token in a log line, never any id in a metric attribute — the bucket name is
-  the only dimension the counter carries, ADR-0009).
+  the only dimension the counter carries, ADR-0009). Whether `products.create` joins this bucket is
+  for TASK-0008 to decide alongside declaring that route — ADR-0019's rate limiter implementation
+  (`apps/api/src/http/security/rate-limit.ts`) covers only the two routes above today.
 
 A rejection is the same typed `RateLimitedError` and therefore the same wire shape and `Retry-After`
 header the existing buckets produce, which is what TASK-0003's header assertion tests.
@@ -306,11 +308,13 @@ same review-list query key `reviews.submit` already invalidates.
 
 ## Open questions
 
-1. **The two new rate-limit buckets** need a record: ADR-0018's bucket list is stated as frozen, and
-   this document deliberately does not unfreeze it. Proposal: a short record accepting
-   `anonymous-read` and `review-submission` with the keys above.
-2. **`authorLabel`** depends on SPEC-0001's open question 1. Until it is settled, the field is
-   specified as "a stable, non-identifying label" and the derivation is not fixed here.
+1. **The two new rate-limit buckets — resolved.** The existing bucket list is stated as frozen in
+   the rate-limiter's own source comment (not in any ADR — ADR-0018 names no bucket, frozen or
+   otherwise), and this document deliberately declined to unfreeze it unilaterally. ADR-0019 is that
+   record: it accepts `anonymous-read` and `review-submission` with the keys stated above.
+2. **`authorLabel` — resolved.** Depended on SPEC-0001's open question 1, now resolved there: the
+   field is the local part of the reviewer's sign-in email, trimmed and truncated to 24 characters,
+   falling back to `Reviewer` when nothing is left to show, and never the email itself.
 3. **Granting either capability has no surface.** Both are set by seed or by a database update;
    there is no admin screen for either, and ADR-0018 records that as deliberate for a system with
    one manager and one moderator. The day there are ten of either, it needs one.
@@ -341,6 +345,6 @@ same review-list query key `reviews.submit` already invalidates.
 | Ownership rules (403), conflict (409) | ADR-0008 | TASK-0003 |
 | Error mapping in one place, generic 5xx bodies | ADR-0008 | TASK-0003 |
 | Pagination bounds and cursor rules | ADR-0004 | TASK-0003 |
-| Rate-limit buckets (pending a record) | ADR-0018 | TASK-0003 |
+| Rate-limit buckets: `anonymous-read`, `review-submission` | ADR-0018, ADR-0019 | TASK-0003 |
 | Generated OpenAPI document | ADR-0004 | TASK-0003 |
 | Client typing and invalidation rules | ADR-0012 | TASK-0004 |

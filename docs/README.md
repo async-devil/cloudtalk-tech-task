@@ -35,6 +35,7 @@ code.
 | [ADR-0016](adr/ADR-0016-database-naming-and-structure-with-slug-identity.md) | Database naming and structure conventions, with slug identity for catalogue rows | accepted | 2026-09-09 |
 | [ADR-0017](adr/ADR-0017-authentication-with-capability-flags.md) | Magic-link authentication with a single-tenant session model carrying capability flags, over a default-on security baseline | superseded | 2026-09-09 |
 | [ADR-0018](adr/ADR-0018-authentication-with-moderator-capability.md) | Magic-link authentication with a two-member capability set, over a default-on security baseline | accepted | 2026-09-09 |
+| [ADR-0019](adr/ADR-0019-anonymous-read-and-review-submission-rate-limits.md) | Extending the rate-limit baseline with anonymous-read and review-submission buckets | accepted | 2026-09-09 |
 
 ## Application specification
 
@@ -42,7 +43,7 @@ code.
 |---|---|---|---|
 | [SPEC-0001](spec/SPEC-0001-product-and-screens.md) | The product — actors, rules, journeys and screens | accepted | ADR-0012, ADR-0014, ADR-0016, ADR-0018 |
 | [SPEC-0002](spec/SPEC-0002-data-model.md) | The data model — the reviews schema, its vocabularies and its projection | accepted | ADR-0006, ADR-0014, ADR-0016, ADR-0018 |
-| [SPEC-0003](spec/SPEC-0003-api.md) | The API — contract namespaces, wire shapes, pagination and failure | accepted | ADR-0004, ADR-0008, ADR-0016, ADR-0018 |
+| [SPEC-0003](spec/SPEC-0003-api.md) | The API — contract namespaces, wire shapes, pagination and failure | accepted | ADR-0004, ADR-0008, ADR-0016, ADR-0018, ADR-0019 |
 | [SPEC-0004](spec/SPEC-0004-aggregation-and-events.md) | Aggregation and events — the outbox, the relay, and the rating projection | accepted | ADR-0007, ADR-0009, ADR-0014, ADR-0018 |
 
 ## Implementation tasks
