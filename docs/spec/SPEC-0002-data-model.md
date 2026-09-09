@@ -268,7 +268,9 @@ the derived id/name types, and a row schema — exported from the single barrel:
 Each is parity-tested against the seeded rows, like the spine's four: the vocabulary in code and the
 vocabulary in the database are one thing, and the test is what keeps them one thing.
 
-`TOKEN_PREFIX` already carries `Product`, `Review` and `User` with the right comments — no change.
+`TOKEN_PREFIX` already carries `Review` and `User` with the right comments — no change. It
+deliberately carries no `Product` entry: a catalogue row is addressed by its `slug` (ADR-0016), so
+`reviews.product` has no `token` column for a prefix to mint.
 
 ### Data-lifecycle registry
 
@@ -342,8 +344,9 @@ a second identifier — and it enqueues a recomputation per product rather than 
    and a URL that reads slightly stale — the right trade here, and the wrong one the day the
    catalogue is indexed by a search engine. The fix, when it is needed, is the redirect table that
    record names.
-5. **Full-text search.** The catalogue filter is a substring match on `name` (SPEC-0003), which uses
-   no index. At catalogue scale that is fine and it is stated here so that the day it is not, the fix
+5. **Full-text search.** The catalogue filter is a substring match on `name` or `sku` (SPEC-0003),
+   which uses no index. At catalogue scale that is fine and it is stated here so that the day it is
+   not, the fix
    is a known one (a trigram index, or a search context).
 
 ## Traceability
