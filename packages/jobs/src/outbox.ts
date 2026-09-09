@@ -10,6 +10,7 @@ import { createModuleObservability, METRIC_ATTRIBUTE } from '@repo/observability
 import { rowAs, rowsAs } from '@repo/persistence';
 import { type Kysely, sql } from 'kysely';
 import { z } from 'zod';
+import { writeOutboxDeadLetter } from './dead-letter.js';
 import { toSegment } from './internal/identifiers.js';
 import { truncateReason } from './internal/reason.js';
 import { jsonValueSchema, oldestCreatedAtRowSchema } from './internal/rows.js';
@@ -69,6 +70,13 @@ function outboxTableName(outbox: OutboxTableRef): string {
   return `${outbox.schema}.${outbox.table}`;
 }
 
+/** The relay's own stage segment — ONE formula, shared by `relayOutboxBatch`'s parking branch
+ * (the `jobs.dead_letter.stage` value) and `startOutboxRelay`'s worker/schedule registration, so
+ * the two can never drift apart into naming two different things "the relay's stage". */
+function outboxRelayStage(outbox: OutboxTableRef): string {
+  return `${toSegment(outbox.schema)}-outbox-relay`;
+}
+
 // ---------------------------------------------------------------------------------------------
 // insertOutboxRows
 // ---------------------------------------------------------------------------------------------
@@ -117,6 +125,11 @@ export interface OutboxRow {
   readonly op: string;
   readonly payload: JsonValue;
   readonly attempts: number;
+  /** When this row was inserted (its producer's transaction commit) — additive (TASK-0005):
+   * `reviews.rating.lag` needs it to measure ms from event creation to the recomputation that
+   * applies it, and the claim below already reads this row past `created_at` for the backlog-age
+   * query, so surfacing it here costs nothing beyond the `SELECT` column. */
+  readonly createdAt: Date;
 }
 
 const outboxClaimRowSchema = z.object({
@@ -125,6 +138,7 @@ const outboxClaimRowSchema = z.object({
   op: z.string(),
   payload: jsonValueSchema,
   attempts: z.number().int(),
+  created_at: z.date(),
 });
 
 export interface OutboxRelayOptions {
@@ -136,6 +150,11 @@ export interface OutboxRelayOptions {
   readonly batchSize?: number;
   /** Park (`status = 'dead'`) when a row's attempts reach this. @default 5 */
   readonly maxAttempts?: number;
+  /** `jobs.dead_letter.pipeline` for a row this relay parks (SPEC-0004: "a `jobs.dead_letter` row
+   * is written for triage (pipeline `reviews`...)"). @default `outbox.schema` — right for every
+   * outbox this system has today, since each bounded context owns exactly one outbox named after
+   * its own schema; override when a pipeline name must differ from the schema that owns it. */
+  readonly pipeline?: string;
 }
 
 export interface OutboxRelayReport {
@@ -159,14 +178,20 @@ export function computeOldestPendingAgeMs(oldestCreatedAt: Date, now: Date): num
  * ADR-0011 vocabulary): `SELECT ... WHERE outbox_row_status_id = Pending ORDER BY outbox_id
  * FOR UPDATE SKIP LOCKED LIMIT batchSize`, then per row an isolated `try/catch` around `apply`:
  * success ⇒ `Processed` + `processed_at = now()`; throw ⇒ `attempts++`, `last_error`, and `Dead`
- * once `attempts >= maxAttempts` (one `warn` log per newly-parked row). The single commit lands
- * ALL per-row marks — successes commit even when siblings fail; a poison row wedges only itself.
- * Per-row failures are handled HERE and never rethrown (ADR-0008: this is the handling boundary).
+ * once `attempts >= maxAttempts` (one `warn` log per newly-parked row, plus a `jobs.dead_letter`
+ * triage row via `writeOutboxDeadLetter` — SPEC-0004 — written in this SAME transaction so parking
+ * and its triage record commit together). The single commit lands ALL per-row marks — successes
+ * commit even when siblings fail; a poison row wedges only itself. Per-row failures are handled
+ * HERE and never rethrown (ADR-0008: this is the handling boundary).
  */
 export function relayOutboxBatch(options: OutboxRelayOptions): Promise<OutboxRelayReport> {
   const batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
   const maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
   const tableName = outboxTableName(options.outbox);
+  // Needed only by the parking branch below, but computed once per pass rather than per row —
+  // neither depends on the claimed row.
+  const stage = outboxRelayStage(options.outbox);
+  const pipeline = options.pipeline ?? options.outbox.schema;
 
   return options.db.transaction().execute(async (trx) => {
     const oldestPending = await sql`
@@ -185,7 +210,7 @@ export function relayOutboxBatch(options: OutboxRelayOptions): Promise<OutboxRel
         : undefined;
 
     const claimedResult = await sql`
-      SELECT outbox_id, aggregate_id, op, payload, attempts
+      SELECT outbox_id, aggregate_id, op, payload, attempts, created_at
       FROM ${sql.table(tableName)}
       WHERE outbox_row_status_id = ${OUTBOX_ROW_STATUS.Pending.id}
       ORDER BY outbox_id
@@ -209,6 +234,7 @@ export function relayOutboxBatch(options: OutboxRelayOptions): Promise<OutboxRel
           op: row.op,
           payload: row.payload,
           attempts: row.attempts,
+          createdAt: row.created_at,
         });
         await sql`
           UPDATE ${sql.table(tableName)}
@@ -228,6 +254,18 @@ export function relayOutboxBatch(options: OutboxRelayOptions): Promise<OutboxRel
                 outbox_row_status_id = ${OUTBOX_ROW_STATUS.Dead.id}
             WHERE outbox_id = ${row.outbox_id}
           `.execute(trx);
+          // SPEC-0004: a parked row gets a `jobs.dead_letter` row for triage. Written HERE, inside
+          // `trx` — the same claim transaction that just marked the row `Dead` above — so parking
+          // and its triage record commit together (`writeOutboxDeadLetter`'s own doc has the uuid
+          // hazard this call is safe against: a non-uuid `aggregate_id` cannot make this statement
+          // throw and abort the park with it).
+          await writeOutboxDeadLetter(trx, {
+            pipeline,
+            instanceId: row.aggregate_id,
+            stage,
+            reason: lastError,
+            attempts: newAttempts,
+          });
           parked += 1;
           outboxRelayCounter.add(1, { queue: tableName, outcome: OUTBOX_ROW_OUTCOME.Parked });
           obs.logger.warn(
@@ -268,13 +306,15 @@ export function relayOutboxBatch(options: OutboxRelayOptions): Promise<OutboxRel
 
 /**
  * Repeatable wiring: `scheduleRepeatable` (schedulerId
- * `outbox-relay:{schema}.{table}`) + a worker whose handler is `relayOutboxBatch`. Spec text
- * names the stage `{pipeline}_outbox_relay`, but `OutboxTableRef` carries no `pipeline` field
- * (only `schema`/`table`, matching the schedulerId's own basis) — `outbox.schema` is used in its
- * place, consistent with the schedulerId already keying on `schema.table` rather than a pipeline
- * name. Both `stage` and `pipeline` are run through `toSegment` (ADR-0009's `assertSegment`
- * rejects the underscores an ADR-0011 schema name like `example_context` legitimately contains —
- * see the identifiers module doc). Returns the worker handle for shutdown.
+ * `outbox-relay:{schema}.{table}`) + a worker whose handler is `relayOutboxBatch`. `stage` and this
+ * worker's own `pipeline` (`@repo/messaging`'s job-routing segment, `createWorker`'s `pipeline`
+ * argument below — NOT `OutboxRelayOptions.pipeline`, the unrelated `jobs.dead_letter.pipeline`
+ * value `relayOutboxBatch` defaults from the same schema) are both run through `toSegment`
+ * (ADR-0009's `assertSegment` rejects the underscores an ADR-0011 schema name like
+ * `example_context` legitimately contains — see the identifiers module doc); the dead-letter
+ * pipeline value is deliberately NOT segment-transliterated, since `jobs.dead_letter.pipeline` is
+ * a plain ADR-0011 identifier column, not a `{module}.{object}.{verb}` segment. Returns the worker
+ * handle for shutdown.
  */
 export async function startOutboxRelay(
   options: OutboxRelayOptions & {
@@ -283,7 +323,7 @@ export async function startOutboxRelay(
   },
 ): Promise<ScheduledWorkerHandle> {
   const schemaSegment = toSegment(options.outbox.schema);
-  const stage = `${schemaSegment}-outbox-relay`;
+  const stage = outboxRelayStage(options.outbox);
 
   // Hoisted so the schedule registration below and the returned handle name ONE declaration
   //: a consumer probing whether this schedule exists in Redis must read the
