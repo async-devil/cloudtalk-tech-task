@@ -1,0 +1,30 @@
+{
+  "name": "@repo/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun src/runtime/main.ts"
+  },
+  "dependencies": {
+    "@elysiajs/opentelemetry": "1.4.11",
+    "@opentelemetry/api": "1.9.1",
+    "@orpc/openapi": "1.14.8",
+    "@orpc/server": "1.14.8",
+    "elysia": "1.4.29",
+    "kysely": "0.29.3",
+    "zod": "4.4.3",
+    "@repo/auth": "workspace:*",
+    "@repo/config": "workspace:*",
+    "@repo/contracts": "workspace:*",
+    "@repo/kernel": "workspace:*",
+    "@repo/messaging": "workspace:*",
+    "@repo/observability": "workspace:*",
+    "@repo/persistence": "workspace:*"
+  },
+  "devDependencies": {
+    "pg": "8.22.0",
+    "testcontainers": "12.0.4",
+    "vitest": "4.1.10"
+  }
+}
