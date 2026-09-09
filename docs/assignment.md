@@ -36,6 +36,7 @@ Using agentic coding is very welcome.
 | Brief | Where it is answered |
 |---|---|
 | Thought process, design decisions, trade-offs | [`docs/adr/`](adr/) — one decision per record, each with the alternatives that were rejected |
+| What is actually being built — domain, screens, tables, wire | [`docs/spec/`](spec/) — the application specification |
 | Units of work and their acceptance criteria | [`docs/tasks/`](tasks/) |
 | Easy to set up | [`README.md`](../README.md) — one command to a running stack |
 | Extendable | [`CONTRIBUTING.md`](../CONTRIBUTING.md) — how to add a module; module boundaries are machine-enforced |
