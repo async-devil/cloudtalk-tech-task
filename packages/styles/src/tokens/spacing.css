@@ -33,7 +33,7 @@
    * happened to need it first. Fixed chrome — a sticky header, a bottom bar — spends these so the
    * Capacitor shell ships notch-correct out of the box.
    *
-   * `env` with an EXPLICIT `0px` fallback, which is what makes these safe on the web: outside a
+   * `env()` with an EXPLICIT `0px` fallback, which is what makes these safe on the web: outside a
    * WebView the browser resolves `env(safe-area-inset-*)` to the fallback, so the same class list
    * lays out identically in a desktop browser and on a notched phone. Without the fallback the
    * whole declaration is invalid-at-computed-value-time and the property resolves to nothing.
@@ -64,7 +64,7 @@
  * assumed from this note: Tailwind *does* generate utilities for it, so registering the safe-area
  * quartet in `@theme inline` really did emit working `.pt-safe-top{padding-top:var(--spacing-safe-top)}`
  * rules. It ALSO emitted the same self-reference described below — `--spacing-safe-top:var(--spacing-safe-top)`
- * at byte ~3.2k against the real `env` value at ~18.9k in the built stylesheet — so the nicer
+ * at byte ~3.2k against the real `env()` value at ~18.9k in the built stylesheet — so the nicer
  * class names would have been bought with exactly the silent-failure mode this note exists to
  * describe, and on the one token quartet whose failure (no notch padding) is least visible in a
  * desktop browser. The registration was removed; the shorthand form is what the app spends.
