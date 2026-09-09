@@ -2,33 +2,50 @@
 
 ## The documentation contract
 
-Two kinds of document, kept strictly separate by intent:
+Three kinds of document, kept strictly separate by intent:
 
 - [`docs/adr/`](docs/adr/) — **decision records**. A decision and its trade-offs. *Why was it built
   this way.*
+- [`docs/spec/`](docs/spec/) — **the application specification**. What the system is: the domain,
+  the screens, the tables, the wire. *What are we building* (ADR-0015).
 - [`docs/tasks/`](docs/tasks/) — **implementation tasks**. A unit of work and its acceptance
   criteria. *What needs doing, and how we know it is done.*
 
-Do not mix them. A record containing a to-do list, or a task arguing an architectural trade-off, is
-in the wrong folder — split it.
+Do not mix them. A record containing a to-do list, a task arguing an architectural trade-off, or a
+specification choosing between alternatives is in the wrong folder — split it. The dividing line
+between a record and a specification: a record chooses, a specification describes what the choice
+implies. "The rating aggregate is a projection" is a decision; the columns of `product_rating` are
+not.
 
-**Naming.** `docs/adr/ADR-XXXX-kebab-case-title.md`, `docs/tasks/TASK-XXXX-kebab-case-title.md`.
-Ids are sequential per folder, zero-padded to four digits, never reused or renumbered.
+**Naming.** `docs/adr/ADR-XXXX-kebab-case-title.md`, `docs/spec/SPEC-XXXX-kebab-case-title.md`,
+`docs/tasks/TASK-XXXX-kebab-case-title.md`. Ids are sequential per folder, zero-padded to four
+digits, never reused or renumbered.
 
 **Frontmatter.** A record carries `id`, `title`, `status` (`proposed` | `accepted` | `superseded` |
-`rejected`), `supersedes`, `date`. A task carries `id`, `title`, `status` (`draft` | `ready` |
-`in-progress` | `done`), `adr`, `date`.
+`rejected`), `supersedes`, `date`. A specification carries `id`, `title`, `status` (`draft` |
+`accepted` | `superseded`), `supersedes`, `adr`, `date`. A task carries `id`, `title`, `status`
+(`draft` | `ready` | `in-progress` | `done`), `adr`, `date`.
 
 **Body sections, in this order.** A record: Context → Decision → Consequences → Alternatives
-considered, where Decision is one sentence. A task: Scope → Out of scope → Acceptance criteria →
-Notes, where the criteria are a testable checklist with no adjectives in it.
+considered, where Decision is one sentence. A specification: Context → Specification → Open
+questions → Traceability, where Traceability maps each part of the specification to the records
+that constrain it and the tasks that implement it. A task: Scope → Out of scope → Acceptance
+criteria → Notes, where the criteria are a testable checklist with no adjectives in it.
 
 **Lifecycle.** A record goes `proposed` → `accepted` or `rejected`, and `accepted` → `superseded`
-only when a new record replaces it and names it in `supersedes`. A task goes `draft` → `ready` →
-`in-progress` → `done`, and only one task is `in-progress` at a time.
+only when a new record replaces it and names it in `supersedes`. A specification goes `draft` →
+`accepted`, and `accepted` → `superseded` the same way — but unlike a record it is *mutable*:
+correcting a specification is normal work, and only a change of decision needs a record. A task goes
+`draft` → `ready` → `in-progress` → `done`, and only one task is `in-progress` at a time.
 
 **`docs/README.md` is generated.** Run `bun run docs-index -- --write` after adding or changing any
-record or task. CI fails on a stale index, and the same check validates the schema above.
+record, specification or task. CI fails on a stale index, and the same check validates the schema
+above.
+
+**Changing the checker.** `docs-index.ts` runs against the real `docs/` tree and has no fixture
+suite (see the note in `selftest.ts`), so a change to it is proven by hand, by breaking each rule
+and watching it go red: a section renamed out of order, an `adr:` pointing at a record that does not
+exist, an id renumbered into a gap, and a hand-edited `docs/README.md`. Restore each afterwards.
 
 Never change a record's status without being asked to. If a decision is needed mid-task that no
 record covers, stop and propose a new one with `status: proposed` rather than deciding silently in
