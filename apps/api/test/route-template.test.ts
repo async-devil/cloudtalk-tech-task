@@ -30,7 +30,13 @@ describe('routeTemplateOf (contract-derived)', () => {
    * exact set, rather than "length > 0", is what makes that failure visible here.
    */
   it('walks the nested contract: every namespace contributes its declared templates', () => {
-    expect([...contractRouteTemplates()].sort()).toEqual(['/session/bootstrap']);
+    expect([...contractRouteTemplates()].sort()).toEqual([
+      '/products',
+      '/products/{productSlug}',
+      '/products/{productSlug}/reviews',
+      '/reviews/{reviewToken}',
+      '/session/bootstrap',
+    ]);
   });
 
   it('normalises method case when building a key', () => {
