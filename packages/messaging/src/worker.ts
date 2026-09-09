@@ -21,7 +21,7 @@ const obs = createModuleObservability('messaging');
 
 /**
  * The job boundary's outcome vocabulary, as a
- * const-object value set (docs/adr/0042-wi01-review-source-of-truth-and-layout.md §1).
+ * const-object value set (ADR-0003).
  */
 export const JOB_OUTCOME = {
   Completed: 'completed',
@@ -52,8 +52,8 @@ export interface WorkerOptions<TData> {
   /** Backoff bounds for the custom `fullJitterBackoff` strategy. Default `{ baseMs: 1000,
    * capMs: 60_000 }` — matches `createQueue`'s producer default. */
   readonly backoff?: BackoffOptions;
-  /** Max jobs processed per window across this worker (BullMQ's worker-level limiter, ADR-0007
-   * §3, additive amendment to). Unset = unlimited. */
+  /** Max jobs processed per window across this worker — BullMQ's worker-level limiter
+   * (ADR-0007). Unset means unlimited. */
   readonly limiter?: {
     readonly max: number;
     readonly durationMs: number;

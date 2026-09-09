@@ -11,6 +11,6 @@ export interface MailMessage {
 
 export interface MailSenderPort {
   /** Resolves when the provider accepted the message. Throws typed application errors only — the
-   * auth module maps an exhausted/terminal send to its own send-failure error (ADR-0004). */
+   * auth module maps an exhausted/terminal send to its own send-failure error (ADR-0008). */
   send(message: MailMessage): Promise<{ readonly providerMessageId?: string }>;
 }

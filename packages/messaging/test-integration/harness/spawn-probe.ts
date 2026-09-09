@@ -1,6 +1,6 @@
 /**
  * Spawns a probe script as a genuine `bun` OS process ('s "Bun-globals constraint" — same
- * ADR-0010 §6 escape hatch `apps/api/test/harness/spawn-app.ts` documents: this suite's own
+ * ADR-0010 escape hatch `apps/api/test/harness/spawn-app.ts` documents: this suite's own
  * Vitest process is real Node regardless of how the `vitest` CLI was launched, so importing
  * `@repo/messaging`'s bus/rate-limiter/`scheduleRepeatable` directly here would hit
  * `globalThis.Bun` as `undefined`). Each probe script is a standalone entry that does its own work

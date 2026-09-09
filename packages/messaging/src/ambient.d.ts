@@ -7,7 +7,7 @@
  * `close`, and the handful of commands the adapter forwards directly rather than through
  * `send`.
  *
- * Hand-written ambients are the ruled decision, NOT an oversight (ADR-0003 §6): the dependency
+ * Hand-written ambients are the ruled decision, NOT an oversight (ADR-0003): the dependency
  * registry admits no dependency without an entry, and a `bun-types` entry would license the entire
  * Bun surface everywhere — runtime-API sprawl the "modules survive extraction" law (ADR-0001)
  * exists to catch. This declaration is minimal and lists only the client shape BullMQ's adapter

@@ -1,5 +1,5 @@
 /**
- * wi-11 security-baseline probe: sliding window. Run as a real Bun process against
+ * Sliding-window probe. Run as a real Bun process against
  * a real Redis (harness/spawn-probe.ts) — same "Bun-globals under Vitest" constraint as the
  * token-bucket probe. Three checks: (1) burst a window to exhaustion, deny with a positive
  * `retryAfterMs`, then real-time-past-window re-admits; (2) fire concurrent `tryAcquire` calls

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Tier 0 of the modular monolith (ADR-0001): the shared error taxonomy (ADR-0004) and the shared
+Tier 0 of the modular monolith (ADR-0001): the shared error taxonomy (ADR-0008) and the shared
 pure types every other package builds on. Zero workspace dependencies, zero npm dependencies —
 this package must be liftable on its own (ADR-0001's autonomy contract).
 
@@ -10,7 +10,7 @@ this package must be liftable on its own (ADR-0001's autonomy contract).
 should map onto one of the nine existing subclasses (optionally with its own `details` shape); it
 should not grow this list, and it should never be expressed as a plain `Error` subclass that
 bypasses `AppError`. If a genuinely new HTTP-status-shaped failure category is needed, that is a
-taxonomy change reviewed against ADR-0004, not a local addition.
+taxonomy change reviewed against ADR-0008, not a local addition.
 
 ## Public contract
 
@@ -72,7 +72,7 @@ None — kernel has no runtime configuration.
 
 None. Kernel is pure logic — no spans, no metrics, no log lines. Any observability tied to an
 `AppError` (e.g. logging a terminal classification) is emitted by the boundary that catches it,
-per ADR-0004.
+per ADR-0008.
 
 ## Extraction steps
 

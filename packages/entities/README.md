@@ -30,7 +30,7 @@ prevent.
 
 | Dependency | Why |
 |---|---|
-| `zod` | The row schemas. A reference table is read at a boundary like anything else (ADR-0002). |
+| `zod` | The row schemas. A reference table is read at a boundary like anything else (ADR-0004). |
 | `nanoid` | `customAlphabet` for the token random segment. Never called bare — see below. |
 
 No workspace dependencies. This module sits at the facade tier and imports nothing from the

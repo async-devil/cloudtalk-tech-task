@@ -1,5 +1,5 @@
 /**
- * §9.2 probe: token bucket. Run as a real Bun process against a real Redis (harness/spawn-probe.ts).
+ * Probe: token bucket. Run as a real Bun process against a real Redis (harness/spawn-probe.ts).
  * Two checks: (1) burst a bucket to exhaustion, then real-time refill re-allows; (2) fire
  * concurrent `tryAcquire` calls against one bucket and confirm the Lua script's atomicity —
  * exactly `capacity` admissions, never more, regardless of concurrency.

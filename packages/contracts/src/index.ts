@@ -1,4 +1,4 @@
-// Public barrel — the module's entire public contract (ADR-0002: one barrel, no nested barrels).
+// Public barrel — the module's entire public contract (ADR-0003: one barrel, no nested barrels).
 // Domain concerns live one-per-folder (contracts/<domain>/); the public surface still flows only
 // through this single package entry (ADR-0001).
 export { appContract } from './contracts/app-contract.js';

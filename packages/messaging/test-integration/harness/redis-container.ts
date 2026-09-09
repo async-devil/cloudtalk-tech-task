@@ -1,7 +1,7 @@
 /**
- * Testcontainers `redis:8-alpine` for the §9 integration probes (
- * §9). Docker-host autodetect duplicated (not imported) from `apps/api/test/harness/containers.ts`
- * per that spec's own §9 note: lifting it into a shared location would add a new workspace edge
+ * Testcontainers `redis:8-alpine` for the integration probes (
+ * ). Docker-host autodetect duplicated (not imported) from `apps/api/test/harness/containers.ts`
+ * per that spec's own note: lifting it into a shared location would add a new workspace edge
  * (messaging has no reason to depend on apps/api or vice versa) — this ~30-line block is the
  * accepted alternative, pointer comment included. See that file for the full colima/Ryuk
  * reasoning (registry pitfall, docs/trusted-code-sources.md row 85); this is a verbatim copy of
@@ -34,7 +34,7 @@ export interface RedisInfra {
 }
 
 /** Starts `redis:8-alpine` ('s own image choice) once per suite file. Generous startup
- * timeout (ADR-0010 §5): first-run image pulls plus colima's port-forwarder add real latency. */
+ * timeout (ADR-0010): first-run image pulls plus colima's port-forwarder add real latency. */
 export async function startRedisInfra(): Promise<RedisInfra> {
   autodetectDockerHost();
 

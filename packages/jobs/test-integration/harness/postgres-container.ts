@@ -3,13 +3,13 @@
  * proofs (claim/regression-guard/write-ahead-conflict/completeBranch-count and friends —
  * last paragraph). Docker-host autodetect duplicated (not imported) from
  * `apps/api/test/harness/containers.ts` / `packages/messaging/test-integration/harness/redis-container.ts`
- * per that spec's own §9 note on the messaging harness: lifting it into a shared location would
+ * per that spec's own note on the messaging harness: lifting it into a shared location would
  * add a new workspace edge for a ~30-line block. See those files for the full colima/Ryuk
  * reasoning (registry pitfall, docs/trusted-code-sources.md row 85).
  *
  * Runs the real product migrations (the single `packages/persistence/migrations` folder, since the
  * 2026-07-24 consolidation) via `runMigrations`, THEN layers one test-only fixture schema
- * (`test_pipeline`) that instantiates the §3.4/§5.1/§7.1 table templates by hand — this package
+ * (`test_pipeline`) that instantiates the table templates by hand — this package
  * owns no domain pipeline table of its own (that is every consuming context's job,
  * `packages/example-context` at), so the helper-level proofs need a stand-in shaped exactly
  * like the frozen templates.
@@ -48,8 +48,8 @@ const MIGRATION_FOLDERS = [
 ];
 
 /**
- * Test-only root-migration application (wi-05, [ROOT]): the runner skips index `0`
- * (ADR-0011 §12 — provisioning applies it), and a Testcontainers database is empty by
+ * Test-only root-migration application: the runner skips index `0`
+ * (ADR-0011 — provisioning applies it), and a Testcontainers database is empty by
  * construction and single-use, so this harness IS the provisioning step. Runs the real root
  * file's `up` (never a copy), then grants the two roles to the container login role —
  * `SET LOCAL ROLE` requires membership, and the login role's name is deployment configuration a

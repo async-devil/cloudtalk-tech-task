@@ -360,8 +360,7 @@ describe('tokens/*.css ↔ token-scales.ts reconciliation', () => {
   it.each(SCALES)('$prefix names match exactly', ({ prefix, declared }) => {
     const inStylesheet = themeDeclarations
       .filter(({ name }) => name.startsWith(prefix) && !name.endsWith('--line-height'))
-      .map(({ name }) => name.slice(prefix.length))
-      .sort;
+      .map(({ name }) => name.slice(prefix.length)).sort;
     expect(inStylesheet).toEqual([...declared].sort);
   });
 });

@@ -2,7 +2,7 @@ import { defineConfigSlice, isFailClosed } from '@repo/config';
 import { z } from 'zod';
 
 /**
- * The persistence config slice (ADR-0002):
+ * The persistence config slice (ADR-0005):
  *
  * | env key | required | default (test) |
  * |---|---|---|
@@ -51,7 +51,7 @@ export const configSlice = defineConfigSlice('persistence', (mode) =>
     })),
 );
 
-/** The parsed output of {@link configSlice} (ADR-0002): the app composes its config shape
+/** The parsed output of {@link configSlice} (ADR-0003): the app composes its config shape
  * from this exported type rather than restating the field list by hand. Reflects the post-transform
  * shape (`DATABASE_OWNER_URL` always present). */
 export type PersistenceSliceConfig = z.infer<ReturnType<typeof configSlice.schema>>;

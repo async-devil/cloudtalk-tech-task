@@ -4,7 +4,7 @@ import type { PipelineTableContract } from '../contract.js';
 import { type DeadLetterRecord, writeDeadLetter } from '../dead-letter.js';
 
 /**
- * §6.3 terminal routing, frozen — realized INSIDE `runPipelineStage`/`runPipelineBranch` rather
+ * terminal routing, frozen — realized INSIDE `runPipelineStage`/`runPipelineBranch` rather
  * than a detachable wrapper (a separable wrapper would let a worker adopt the spine without
  * ADR-0007's ceiling): runs `performExternalCall`; on throw, `classifyRetry(error)` — `Terminal`
  * writes the dead letter (reason = the classification reason, attempts = the current state-row

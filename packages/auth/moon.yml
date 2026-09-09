@@ -6,6 +6,6 @@ tags:
   - liftable
 
 tasks:
-  # test-integration is package-local (Testcontainers postgres:18, wi-06 spec §11): magic-link
+  # test-integration is package-local (Testcontainers postgres:18): magic-link
   # sign-up, disabled-method rejection, boot parity, session middleware, and the retention pass.
   # The workspace-inherited `deps: ['^:build']` already covers the built dependencies it needs.

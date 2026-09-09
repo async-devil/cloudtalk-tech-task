@@ -3,7 +3,7 @@ import type { z } from 'zod';
 
 /**
  * Parses one raw row (typically from the typed `sql` template) through a Zod row schema —
- * the raw-SQL edge is a parse boundary (ADR-0002/ADR-0003; closes the `as unknown as` cast hole).
+ * the raw-SQL edge is a parse boundary (ADR-0004; closes the `as unknown as` cast hole).
  * @throws ValidationError when the row does not match the schema.
  */
 export function rowAs<T>(schema: z.ZodType<T>, row: unknown): T {
@@ -17,7 +17,7 @@ export function rowAs<T>(schema: z.ZodType<T>, row: unknown): T {
 }
 
 /**
- * Parses an array of raw rows through a Zod row schema (ADR-0002/ADR-0003).
+ * Parses an array of raw rows through a Zod row schema (ADR-0004).
  * @throws ValidationError naming the offending row index on the first parse failure.
  */
 export function rowsAs<T>(schema: z.ZodType<T>, rows: ReadonlyArray<unknown>): T[] {

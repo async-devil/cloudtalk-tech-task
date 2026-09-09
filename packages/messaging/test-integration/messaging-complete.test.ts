@@ -1,6 +1,6 @@
 /**
  * — the integration proof: three probes, each spawned as a real `bun` process
- * against one shared `redis:8-alpine` Testcontainer (ADR-0010 §6 escape hatch — see
+ * against one shared `redis:8-alpine` Testcontainer (ADR-0010 escape hatch — see
  * harness/spawn-probe.ts's header for the Bun-globals-under-Vitest reasoning). One container for
  * the whole file (not one per probe): none of these three probes share mutable state — each uses
  * a fresh/random bucket key, scheduler id, or bus channel round — so a single Redis keeps the
@@ -136,7 +136,7 @@ describe('integration proof (Testcontainers redis:8-alpine)', () => {
     expect(payload.removedNeverEnqueued).toBe(false);
   }, 30_000);
 
-  it('sliding window: burst to exhaustion with a positive retryAfterMs, window expiry re-admits, concurrent probes never over-admit, fail-open on an unreachable Redis (wi-11 spec §3/§10.7)', async () => {
+  it('sliding window: burst to exhaustion with a positive retryAfterMs, window expiry re-admits, concurrent probes never over-admit, fail-open on an unreachable Redis', async () => {
     // 90s: the fail-open case (bare Bun.RedisClient defaults, report) waits out Bun's own
     // reconnect/backoff budget (~30s empirically) against a genuinely unreachable host before
     // this probe's own client gives up and the limiter converts that into a fail-open decision.

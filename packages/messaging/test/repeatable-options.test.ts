@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { repeatableJobTemplate, repeatOptionsFrom } from '../src/internal/repeatable-options.js';
 
-describe('repeatableJobTemplate (spec §4 frozen invariant)', () => {
+describe('repeatableJobTemplate (frozen invariant)', () => {
   it('carries the producer defaults (attempts, custom backoff, retention)', () => {
     const template = repeatableJobTemplate('digest', { userId: 'u1' });
     expect(template.name).toBe('digest');
@@ -20,7 +20,7 @@ describe('repeatableJobTemplate (spec §4 frozen invariant)', () => {
   });
 });
 
-describe('repeatOptionsFrom (spec §4 milliseconds/cronPattern -> BullMQ every/pattern)', () => {
+describe('repeatOptionsFrom (milliseconds/cronPattern -> BullMQ every/pattern)', () => {
   it('maps a milliseconds interval to { every }', () => {
     expect(repeatOptionsFrom({ milliseconds: 60_000 })).toStrictEqual({ every: 60_000 });
   });

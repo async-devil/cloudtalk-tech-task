@@ -1,5 +1,5 @@
 /**
- * §9.3 probe: `scheduleRepeatable` idempotency. Run as a real Bun process against a real Redis
+ * Probe: `scheduleRepeatable` idempotency. Run as a real Bun process against a real Redis
  * (harness/spawn-probe.ts). Registers the same `schedulerId` twice with different `every` values
  * and asserts exactly one scheduler exists, carrying the SECOND configuration.
  */

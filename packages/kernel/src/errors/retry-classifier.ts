@@ -1,7 +1,7 @@
 import { isAppError } from './is-app-error.js';
 
 /**
- * The retry decision (ADR-0004), as a const-object value set (ADR-0002): one source of truth; the
+ * The retry decision (ADR-0008), as a const-object value set (ADR-0003): one source of truth; the
  * `RetryDecision` union is derived.
  */
 export const RETRY_DECISION = {
@@ -93,7 +93,7 @@ function extractNetworkCode(error: unknown): string | undefined {
 }
 
 /**
- * `classifyRetry` (ADR-0003, ADR-0004). Type-first, structured-field fallback — no name/message
+ * `classifyRetry` (ADR-0003, ADR-0008). Type-first, structured-field fallback — no name/message
  * matching anywhere, including for foreign errors. Rules evaluate top-down; first match wins
  * (frozen table):
  *

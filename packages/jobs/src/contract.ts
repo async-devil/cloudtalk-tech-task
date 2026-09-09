@@ -2,8 +2,8 @@ import { ValidationError } from '@repo/kernel';
 import { assertIdentifier, assertIdentifierByteLength } from './internal/identifiers.js';
 
 /**
- * The pipeline state-table contract (ADR-0007: caller-owned table, generic helpers;
- * `` §3.3, frozen). One pipeline instance is one row in a
+ * The pipeline state-table contract (ADR-0007: the caller owns the table, the helpers are
+ * generic). One pipeline instance is one row in a
  * module-owned table, in that module's own schema (ADR-0011) — the generic helpers in this
  * package never own the table, they demand this shape.
  */

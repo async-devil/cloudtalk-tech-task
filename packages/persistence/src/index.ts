@@ -1,4 +1,4 @@
-// Public barrel — the module's entire public contract (ADR-0002: one barrel, no nested barrels).
+// Public barrel — the module's entire public contract (ADR-0003: one barrel, no nested barrels).
 export { configSlice, type PersistenceSliceConfig } from './config-slice.js';
 export { createDb, type DbOptions, destroyDb } from './db.js';
 export type { EntityParser } from './internal/entity-parser.js';

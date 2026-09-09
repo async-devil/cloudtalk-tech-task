@@ -1,5 +1,5 @@
 /**
- * §9.1 probe: bus round-trip. Run as a real Bun process (see harness/spawn-probe.ts) against a
+ * Probe: bus round-trip. Run as a real Bun process (see harness/spawn-probe.ts) against a
  * real Redis. Publishes two events under one fabricated trace context: the FIRST delivered
  * event's only handler throws (proving swallow — no crash, no rethrow); the SECOND must still be
  * delivered and handled (proving one failing handler/message does not stop the next). A raw

@@ -1,5 +1,5 @@
 /**
- * The closed set of kernel error codes (ADR-0004), as a const-object value set (ADR-0002): one
+ * The closed set of kernel error codes (ADR-0008), as a const-object value set (ADR-0003): one
  * source of truth; the `ErrorCode` union and the `ERROR_CODES` list are both derived, and the wire
  * shape (`apiErrorShape.code`, `@repo/contracts`) reuses `ERROR_CODES` for its `z.enum` so it can
  * no longer drift from this taxonomy.

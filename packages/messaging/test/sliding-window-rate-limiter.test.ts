@@ -3,7 +3,7 @@ import { createSlidingWindowRateLimiter } from '../src/sliding-window-rate-limit
 
 const CONNECTION = { redisUrl: 'redis://localhost:0' };
 
-describe('createSlidingWindowRateLimiter option validation (wi-11 spec §3)', () => {
+describe('createSlidingWindowRateLimiter option validation', () => {
   it('rejects a non-positive limit', () => {
     expect(() =>
       createSlidingWindowRateLimiter({

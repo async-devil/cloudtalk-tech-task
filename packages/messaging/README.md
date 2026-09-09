@@ -27,9 +27,6 @@ jobIdFor(stage: string, entityId: string): string;
 JOB_OUTCOME: { Completed: 'completed'; RetryScheduled: 'retry-scheduled'; Terminal: 'terminal' };
 ```
 
-See `` §7 and
-`` §3–§6 for the frozen shapes.
-
 ## Dependencies
 
 `bullmq@5.80.2` (the one Redis client dependency repo-wide — BullMQ's documented Bun adapter,
@@ -64,8 +61,7 @@ has no `@repo/contracts` dependency. Dev-only:
   (`withJobStageSpan`, ADR-0009's sanctioned module-prefix exception), with entity id, stage, and
   attempt number as attributes. demo: `jobs.slice.uppercase-note`.
 - **INV-6** — schema-parse failure of job data is terminal: routed through the same `failSpan` +
-  `UnrecoverableError(describeError(error))` shape as any other terminal handler failure (
-  [](../../) §7.2).
+  `UnrecoverableError(describeError(error))` shape as any other terminal handler failure.
   Test: `test/worker.test.ts`.
 - **INV-7** — the job boundary classifies via the kernel's `classifyRetry`, not a bare
   `isAppError && !retryable` check: Terminal ticks `messaging.job.execute`'s
@@ -137,10 +133,6 @@ has no `@repo/contracts` dependency. Dev-only:
 <!-- Every emitted span/instrument maps to a line here; the telemetry-map gate enforces both
      directions (against src/ and against the source specs linked below). -->
 
-Source specs: [wi-03](../../) and
-[wi-02](../../) (`messaging.job.execute`) and
-[wi-11](../../) (`messaging.budget.denied`).
-
 **Spans:** none with a literal name. This module opens two spans whose names are *constructed at
 runtime* and so cannot be enumerated here: `withJobStageSpan` names `jobs.{pipeline}.{stage}` from
 the stage being run, and `withBusEventSpan` names its span from the delivered event type. They are
@@ -154,8 +146,8 @@ identity requires, so success and failure paths cannot drift apart):
 |---|---|---|---|
 | `messaging.event.handle` | counter | Queue, Outcome | consume side, one tick per delivered event per handler; Queue = event type; `completed` / `terminal` (no `RetryScheduled` — the bus never retries) |
 | `messaging.event.publish` | counter | Queue, Outcome | produce side; Queue = event type; `completed` / `terminal` |
-| `messaging.job.execute` | counter | Queue, Outcome | one tick per job attempt; the success path and both failure paths share this instrument and dimension set by construction (wi-02 DoD) |
-| `messaging.budget.denied` | counter | Queue | wi-11 (ADR-0013 measure 5). One tick per exhausted `authorizeSpend` call; Queue = the spend category |
+| `messaging.job.execute` | counter | Queue, Outcome | one tick per job attempt; the success path and both failure paths share this instrument and dimension set by construction |
+| `messaging.budget.denied` | counter | Queue | One tick per exhausted `authorizeSpend` call; Queue is the spend category (ADR-0013) |
 
 A delivered event whose envelope fails to parse records the bounded literal `unknown` as its
 Queue — never a raw wire value (ADR-0009: bounded enums only).

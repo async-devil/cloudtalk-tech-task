@@ -9,11 +9,10 @@ import { branchTableRef, instanceTableRef } from './internal/table-refs.js';
 const obs = createModuleObservability('jobs');
 
 /**
- * `jobs.dead-letter.write`: counter incremented once per write. SPEC DEVIATION,
- * reported: the frozen spec names this `jobs.dead_letter.write`, but `assertModuleName`
- * (ADR-0009) requires every `{module}.{object}.{verb}` segment to match `[a-z0-9-]+` — the
- * underscore in `dead_letter` fails it, so the literal spec name throws `ValidationError` at
- * `createCounter` construction time. Same naming-domain collision as the relay/reconciler/
+ * `jobs.dead-letter.write`: counter incremented once per write. Dashed rather than
+ * `dead_letter`, and the reason is mechanical: `assertModuleName` (ADR-0009) requires every
+ * `{module}.{object}.{verb}` segment to match `[a-z0-9-]+`, so an underscore throws
+ * `ValidationError` at `createCounter` construction time rather than at first emission. Same naming-domain collision as the relay/reconciler/
  * retention stage names (`internal/identifiers.ts`'s `toSegment` doc) — ADR-0011's DB-identifier
  * snake_case and ADR-0009's span/instrument kebab-case disagree on the word separator. Dashed
  * (`dead-letter`) rather than concatenated (`deadletter`), matching `toSegment`'s own choice, so
@@ -32,11 +31,11 @@ export interface DeadLetterRecord {
   readonly branchKey?: string;
   /** Non-empty by construction: callers pass `describeError(error)` or
    * `classifyRetry(error).reason` — kernel guarantees the fallback chain (ADR-0007). Never a raw
-   * provider body (ADR-0006 §4); truncated to `REASON_MAX_LENGTH` characters here regardless. */
+   * provider body (ADR-0006); truncated to `REASON_MAX_LENGTH` characters here regardless. */
   readonly reason: string;
   readonly attempts: number;
   /** Identifiers and classification only — see `jobs.dead_letter.payload`'s column comment
-   * (ADR-0006 §4). */
+   * (ADR-0006). */
   readonly payload?: JsonObject;
 }
 
@@ -48,7 +47,7 @@ export interface DeadLetterRecord {
  * `(instanceId, stage)` as `Failed` with the same reason (ADR-0007: "closes remaining open
  * branches in the same transaction" — this includes the very branch that triggered the write,
  * which is itself still `Pending` at this point). Emits the one boundary `error` log (ADR-0008
- * handle-once: the error's journey ends in this row) and the §9 `jobs.dead-letter.write` counter.
+ * handle-once: the error's journey ends in this row) and the `jobs.dead-letter.write` counter.
  */
 export async function writeDeadLetter(
   db: Kysely<unknown>,

@@ -6,7 +6,7 @@ import { SLIDING_WINDOW_LUA } from './internal/sliding-window-lua.js';
 
 const obs = createModuleObservability('messaging');
 
-/** Options accepted by {@link createSlidingWindowRateLimiter} (wi-11, frozen). */
+/** Options accepted by {@link createSlidingWindowRateLimiter}. */
 export interface SlidingWindowOptions {
   readonly connection: MessagingConnection;
   /** Namespaces the Redis keys, e.g. 'rate-limit:http:auth'. One window per (prefix, subject). */
@@ -85,7 +85,7 @@ async function withDeadline<T>(operation: Promise<T>, label: string): Promise<T>
 }
 
 /**
- * The Redis-Lua sliding-window limiter (wi-11): the sibling of 's token bucket in
+ * The Redis-Lua sliding-window limiter — the sibling of the token bucket in
  * the same rate-limiter family — per-IP/route buckets (measure 1's HTTP shape) rather than the
  * token bucket's per-tenant cost shaping. One `EVAL` per `tryAcquire`, atomic (never over-admits
  * under concurrency). Own raw `Bun.RedisClient`, same as `createTokenBucketRateLimiter`.

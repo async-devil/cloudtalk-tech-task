@@ -215,7 +215,7 @@ async function reconcileStaleStages(
  * (`remove`/`enqueue` with the branchKey) after aging; delegated branches are ONLY aged
  * (`attempts++`, no queue job exists to redrive) — every branch kind reaches the same ceiling,
  * no exceptions (ADR-0007). `updated_at` is bumped by `tg_{table}_branch__set_updated_at`
- * (ADR-0011 §8), not by the `age` UPDATE. */
+ * (ADR-0011), not by the `age` UPDATE. */
 async function reconcileStaleBranches(
   db: Kysely<unknown>,
   contract: PipelineTableContract,

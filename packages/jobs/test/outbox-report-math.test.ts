@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { computeOldestPendingAgeMs } from '../src/outbox.js';
 
-describe('computeOldestPendingAgeMs (spec §9 backlog histogram input, "report math")', () => {
+describe('computeOldestPendingAgeMs (backlog histogram input, "report math")', () => {
   it('computes the millisecond age between the oldest row and now', () => {
     const oldest = new Date('2026-07-16T00:00:00.000Z');
     const now = new Date('2026-07-16T00:00:05.500Z');

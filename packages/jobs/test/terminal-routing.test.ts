@@ -12,7 +12,7 @@ const contract: PipelineTableContract = {
   stages: ['enrich'],
 };
 
-// Retry-classified errors never touch the database (§6.3: "Retry ⇒ rethrow untouched") — a db
+// Retry-classified errors never touch the database (: "Retry ⇒ rethrow untouched") — a db
 // stub that throws on first access proves the Retry branch is a pure passthrough.
 const unreachableDb = {
   transaction: () => {
@@ -20,7 +20,7 @@ const unreachableDb = {
   },
 } as unknown as Kysely<unknown>;
 
-describe('performExternalCallWithRouting (spec §6.3 terminal routing)', () => {
+describe('performExternalCallWithRouting (terminal routing)', () => {
   it('returns the result on success without touching the database', async () => {
     const result = await performExternalCallWithRouting(
       unreachableDb,

@@ -14,7 +14,7 @@ const obs = createModuleObservability('jobs');
 
 /**
  * The retention purge target outcome vocabulary, as a const-object value set
- * (docs/adr/0042-wi01-review-source-of-truth-and-layout.md §1).
+ * (ADR-0003).
  */
 export const RETENTION_PURGE_TARGET = {
   StageResult: 'stage_result',
