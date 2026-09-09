@@ -31,11 +31,13 @@ describe('mintToken', () => {
 
 // The registry is the single source for every table's token prefix, so the set of prefixes is
 // itself a contract: a prefix silently dropped or renamed invalidates every stored token that
-// carries it, and stored tokens are in URLs, logs and support tickets. Asserting the whole set
-// rather than each member means an ADDITION is also a visible, reviewed change.
+// carries it, and stored tokens are in logs and support tickets. Asserting the whole set rather
+// than each member means an ADDITION is also a visible, reviewed change — and it is what made
+// removing the catalogue's `Product` prefix (ADR-0016: products are addressed by slug) a change a
+// reviewer had to look at.
 describe('TOKEN_PREFIX registry', () => {
   it('holds exactly the prefixes this system mints', () => {
-    expect(TOKEN_PREFIX).toStrictEqual({ Product: 'prd', Review: 'rev', User: 'usr' });
+    expect(TOKEN_PREFIX).toStrictEqual({ Review: 'rev', User: 'usr' });
   });
 
   it('gives every prefix a distinct value, so a token names one kind of thing', () => {
