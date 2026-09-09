@@ -1,7 +1,7 @@
 ---
 id: ADR-0013
 title: Magic-link authentication with a single-tenant session model, over a default-on security baseline
-status: accepted
+status: superseded
 supersedes: []
 date: 2026-09-08
 ---

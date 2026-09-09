@@ -27,11 +27,13 @@ code.
 | [ADR-0008](adr/ADR-0008-typed-error-taxonomy.md) | A typed error taxonomy, handled once at boundaries | accepted | 2026-09-08 |
 | [ADR-0009](adr/ADR-0009-observability-through-a-facade.md) | OpenTelemetry behind a facade, with span naming and cardinality rules | accepted | 2026-09-08 |
 | [ADR-0010](adr/ADR-0010-testing-strategy.md) | Vitest, container-backed integration proofs, and mutation as the acceptance standard | accepted | 2026-09-08 |
-| [ADR-0011](adr/ADR-0011-database-naming-and-structure.md) | Database naming and structure conventions | accepted | 2026-09-08 |
+| [ADR-0011](adr/ADR-0011-database-naming-and-structure.md) | Database naming and structure conventions | superseded | 2026-09-08 |
 | [ADR-0012](adr/ADR-0012-frontend-architecture-and-design-system.md) | A React SPA with slice isolation over a token-first design system | accepted | 2026-09-08 |
-| [ADR-0013](adr/ADR-0013-authentication-and-security-baseline.md) | Magic-link authentication with a single-tenant session model, over a default-on security baseline | accepted | 2026-09-08 |
+| [ADR-0013](adr/ADR-0013-authentication-and-security-baseline.md) | Magic-link authentication with a single-tenant session model, over a default-on security baseline | superseded | 2026-09-08 |
 | [ADR-0014](adr/ADR-0014-rating-aggregation-as-a-projection.md) | A product's rating aggregate is an outbox-driven projection, not authoritative state | accepted | 2026-09-08 |
 | [ADR-0015](adr/ADR-0015-specification-as-a-third-document-kind.md) | The application specification is a third document kind, machine-checked like the other two | proposed | 2026-09-09 |
+| [ADR-0016](adr/ADR-0016-database-naming-and-structure-with-slug-identity.md) | Database naming and structure conventions, with slug identity for catalogue rows | accepted | 2026-09-09 |
+| [ADR-0017](adr/ADR-0017-authentication-with-capability-flags.md) | Magic-link authentication with a single-tenant session model carrying capability flags, over a default-on security baseline | accepted | 2026-09-09 |
 
 ## Application specification
 

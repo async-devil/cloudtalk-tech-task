@@ -1,7 +1,7 @@
 ---
 id: ADR-0011
 title: Database naming and structure conventions
-status: accepted
+status: superseded
 supersedes: []
 date: 2026-09-08
 ---
