@@ -6,8 +6,9 @@ The typed-port/wire-contract home (ADR-0001): cross-module ports live here, neve
 sibling-internal reaches. Contract-first law applies once a symbol ships (ADR-0004) — these
 exports are the boundary between `apps/api` and the SPA (`apps/app`): neither restates the
 other's routes, the objects exported here ARE the contract. This package currently ships the
-uniform error shape, the session bootstrap contract, and the two mail ports the auth module
-consumes; a new HTTP route or bus event adds its own contract/schema file here.
+uniform error shape, the session bootstrap contract, the `products` and `reviews` route
+namespaces (TASK-0003), and the two mail ports the auth module consumes; a new HTTP route or bus
+event adds its own contract/schema file here.
 
 **When NOT to use this.** A type or port belongs here only once a second module actually needs to
 see it. A shape two functions inside the SAME module share is not a contract — it stays local to
@@ -23,6 +24,19 @@ for every interface someone thought might travel someday.
   (ADR-0008 defines the codes, ADR-0004 the boundary that renders them).
 - `sessionContract` / `sessionBootstrapSchema` / `SessionBootstrap` — the SPA's session bootstrap
   route and payload.
+- `productsContract` — the catalogue's two anonymous reads, `products.list` and `products.get`
+  (SPEC-0003), plus their wire schemas: `productSlugSchema`, `skuSchema`, `ratingAggregateSchema`
+  / `RatingAggregate`, `productSummarySchema` / `ProductSummary`, `productDetailSchema` /
+  `ProductDetail`. Both routes read the rating PROJECTION (ADR-0014), never the authoritative
+  review rows.
+- `reviewsContract` — a product's reviews: the anonymous `reviews.listForProduct` read (over the
+  AUTHORITATIVE table, ADR-0014) and the three session-required writes, `reviews.submit` /
+  `reviews.update` / `reviews.remove` (SPEC-0003), plus their wire schemas: `reviewTokenSchema`,
+  `ratingSchema`, `reviewTitleSchema`, `reviewBodySchema`, `reviewSummarySchema` /
+  `ReviewSummary`.
+- `pageOf` / `cursorPageSchema` / `CursorPage` — the one cursor-page shape (`{ items, nextCursor }`)
+  every list route in this package uses, so the SPA needs one paging component and one
+  page-exhaustion test rather than a shape per endpoint.
 - `MailRendererPort`, `MailSenderPort`, and their supporting types (`MAIL_TEMPLATE`,
   `MailTemplateData`, `RenderedMailBody`, `MailMessage`) — the two ports the auth module depends
   on for turning a magic-link/welcome event into a sent email, without depending on a rendering

@@ -5,10 +5,31 @@ export { appContract } from './contracts/app-contract.js';
 export { emptyContract } from './contracts/empty-contract.js';
 export { type ApiErrorShape, apiErrorShape } from './contracts/error-shape.js';
 export {
+  type ProductDetail,
+  type ProductSummary,
+  productDetailSchema,
+  productSlugSchema,
+  productSummarySchema,
+  productsContract,
+  type RatingAggregate,
+  ratingAggregateSchema,
+  skuSchema,
+} from './contracts/products/products.js';
+export {
+  type ReviewSummary,
+  ratingSchema,
+  reviewBodySchema,
+  reviewSummarySchema,
+  reviewsContract,
+  reviewTitleSchema,
+  reviewTokenSchema,
+} from './contracts/reviews/reviews.js';
+export {
   type SessionBootstrap,
   sessionBootstrapSchema,
   sessionContract,
 } from './contracts/session/session.js';
+export { type CursorPage, cursorPageSchema, pageOf } from './contracts/shared/page.js';
 export {
   MAIL_TEMPLATE,
   type MagicLinkTemplateData,
