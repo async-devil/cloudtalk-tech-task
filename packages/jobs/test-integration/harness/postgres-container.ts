@@ -18,7 +18,7 @@
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import process from 'node:process';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { createDb, destroyDb, runMigrations } from '@repo/persistence';
 import { type Kysely, sql } from 'kysely';
 import { GenericContainer, Wait } from 'testcontainers';
@@ -38,34 +38,13 @@ function autodetectDockerHost(): void {
   }
 }
 
-// Since the 2026-07-24 consolidation every migration lives in the single
-// `packages/persistence/migrations/` folder, so this runs the whole product schema — including
-// `example_context`, whose presence `0006-grant-application-roles.ts` requires (it grants on that
-// schema). The extra schemas are inert for this package's helper-level proofs, which drive their
+// Every migration lives in the single `packages/persistence/migrations/` folder (currently
+// `0001`-`0003`: persistence bootstrap, the jobs spine, auth), so this runs the whole product
+// schema. The extra schemas are inert for this package's helper-level proofs, which drive their
 // own `test_pipeline` fixture schema.
 const MIGRATION_FOLDERS = [
   fileURLToPath(new URL('../../../persistence/migrations', import.meta.url)),
 ];
-
-/**
- * Test-only root-migration application: the runner skips index `0`
- * (ADR-0011 — provisioning applies it), and a Testcontainers database is empty by
- * construction and single-use, so this harness IS the provisioning step. Runs the real root
- * file's `up` (never a copy), then grants the two roles to the container login role —
- * `SET LOCAL ROLE` requires membership, and the login role's name is deployment configuration a
- * migration cannot parameterize over. Duplicated per harness, not shared, per the
- * same ruling as `autodetectDockerHost` above.
- */
-async function applyClusterProvisioning(db: Kysely<unknown>): Promise<void> {
-  const rootMigrationPath = fileURLToPath(
-    new URL('../../../persistence/migrations/0-create-cluster-roles.ts', import.meta.url),
-  );
-  const rootMigration = (await import(pathToFileURL(rootMigrationPath).href)) as {
-    up: (db: Kysely<unknown>) => Promise<void>;
-  };
-  await rootMigration.up(db);
-  await sql`GRANT app_request, app_worker TO postgres`.execute(db);
-}
 
 /** The test-only fixture pipeline: schema `test_pipeline`, table `widget`, two stages
  * (`stage_a`, `stage_b`), shaped exactly like 's frozen templates. Not a real
@@ -176,6 +155,12 @@ export async function startJobsTestInfra(): Promise<JobsTestInfra> {
 
   const postgresUrl = `postgres://postgres:test@${postgres.getHost()}:${postgres.getMappedPort(5432)}/jobs_test`;
 
+  // Wait-strategy readiness (`forLogMessage` above) proves the SERVER logged "ready", not that
+  // this process can already reach it — a fresh connection can still race the log line by a beat.
+  // No cluster-role provisioning step belongs here: `0002-create-jobs-spine.ts` states this
+  // repository's actual role model plainly — "no RLS-scoped runtime roles — one connection owns
+  // both migrations and runtime traffic" — and the container's `postgres` login role is already
+  // that connection's superuser, so `runMigrations` below needs nothing granted to it first.
   const probe = createDb<unknown>({ connectionString: postgresUrl, poolSize: 1 });
   try {
     let connected = false;
@@ -195,7 +180,6 @@ export async function startJobsTestInfra(): Promise<JobsTestInfra> {
         `jobs test infra: postgres never accepted a connection: ${String(lastError)}`,
       );
     }
-    await applyClusterProvisioning(probe);
   } finally {
     await destroyDb(probe);
   }
