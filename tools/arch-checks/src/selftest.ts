@@ -15,6 +15,13 @@
  * exercised against the repository's real migrations by the `root:migration-ddl` task. That is
  * weaker than a red fixture and is recorded here rather than glossed over — a gate with no
  * negative case is a gate nobody has watched fail.
+ *
+ * `docs-index` is absent for the same reason and one more: it takes no root argument, resolving
+ * `docs/` from its own module URL, so there is no way to point it at a fixture tree without adding
+ * a parameter that exists only for the test. It runs against the real `docs/` folder in the
+ * `root:docs-check` task, and its negative cases (a broken section order, a dangling `adr:`
+ * reference, a renumbered id, a hand-edited index) are documented in `CONTRIBUTING.md` as checks a
+ * contributor performs by hand when changing the checker.
  */
 
 import { spawnSync } from 'node:child_process';

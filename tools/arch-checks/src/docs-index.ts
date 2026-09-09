@@ -8,13 +8,17 @@
  * records — nobody hand-edits a table of twenty-one rows correctly forever. The checker half is
  * what makes that true in CI rather than in principle, and while it is already parsing every file's
  * frontmatter it validates the rest of the documentation contract for free: id/filename agreement,
- * sequential ids, the status vocabulary, the section order, and whether a task's `adr:` references
- * resolve to records that exist.
+ * sequential ids, the status vocabulary, the section order, and whether a task's or specification's
+ * `adr:` references resolve to records that exist. Three kinds since ADR-0015 — records, the
+ * application specification, and tasks — each with its own frozen frontmatter and section order.
  *
  * The one thing it deliberately does NOT do is diff prose. An ADR that argues a trade-off and a
  * task that lists acceptance criteria are different documents, and the check for "is this in the
  * right folder" is a heuristic reported as a warning — a hard failure on a prose shape would be a
- * gate that is wrong often enough to be routinely overridden, which is worse than no gate.
+ * gate that is wrong often enough to be routinely overridden, which is worse than no gate. That
+ * heuristic covers records and tasks only: a specification legitimately contains checklists,
+ * tables, wire shapes and DDL, so there is no shape a machine could read as "this is in the wrong
+ * folder", and claiming one would be a gate that fires on correct documents.
  */
 
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -26,18 +30,43 @@ const INDEX_PATH = join(DOCS_ROOT, 'README.md');
 
 const ADR_STATUSES = ['proposed', 'accepted', 'superseded', 'rejected'] as const;
 const TASK_STATUSES = ['draft', 'ready', 'in-progress', 'done'] as const;
+/** A specification is mutable (ADR-0015) — it has no `rejected`, and no `ready`/`in-progress`:
+ * it is a description of the system, not a decision to take or a unit of work to schedule. */
+const SPEC_STATUSES = ['draft', 'accepted', 'superseded'] as const;
 
 /** The frozen section order. A record whose headings differ is in the wrong shape, not merely
  * unconventional — the reading order in `CONTRIBUTING.md` depends on where each part is. */
 const ADR_SECTIONS = ['Context', 'Decision', 'Consequences', 'Alternatives considered'] as const;
 const TASK_SECTIONS = ['Scope', 'Out of scope', 'Acceptance criteria', 'Notes'] as const;
+const SPEC_SECTIONS = ['Context', 'Specification', 'Open questions', 'Traceability'] as const;
 
 /** The folder each kind lives in. Singular kind, plural folder — spelled out once here rather
  * than concatenated at four call sites where one of them would eventually be wrong. */
-const FOLDER = { adr: 'adr', task: 'tasks' } as const;
+const FOLDER = { adr: 'adr', task: 'tasks', spec: 'spec' } as const;
+type Kind = keyof typeof FOLDER;
+
+/**
+ * The per-kind schema, as four lookups rather than the ternaries that served while there were two
+ * kinds (ADR-0015 adds the third). A ternary chain would silently give a third kind the second
+ * kind's rules; a lookup keyed by `Kind` cannot compile with an entry missing.
+ */
+const ID_PREFIX = { adr: 'ADR', task: 'TASK', spec: 'SPEC' } as const;
+const STATUSES: Readonly<Record<Kind, readonly string[]>> = {
+  adr: ADR_STATUSES,
+  task: TASK_STATUSES,
+  spec: SPEC_STATUSES,
+};
+const SECTIONS: Readonly<Record<Kind, readonly string[]>> = {
+  adr: ADR_SECTIONS,
+  task: TASK_SECTIONS,
+  spec: SPEC_SECTIONS,
+};
+/** The frontmatter field whose ids must resolve to existing records: a record names what it
+ * supersedes; a task and a specification each name the records they obey. */
+const REF_FIELD = { adr: 'supersedes', task: 'adr', spec: 'adr' } as const;
 
 interface Record_ {
-  readonly kind: 'adr' | 'task';
+  readonly kind: Kind;
   readonly file: string;
   readonly id: string;
   readonly title: string;
@@ -97,12 +126,12 @@ function topLevelSections(source: string): readonly string[] {
     .map((line) => line.slice(3).trim());
 }
 
-function read(kind: 'adr' | 'task', file: string): Record_ | undefined {
+function read(kind: Kind, file: string): Record_ | undefined {
   const source = readFileSync(join(DOCS_ROOT, FOLDER[kind], file), 'utf8');
   const fields = parseFrontmatter(file, source);
   if (fields === undefined) return undefined;
 
-  const prefix = kind === 'adr' ? 'ADR' : 'TASK';
+  const prefix = ID_PREFIX[kind];
   const id = fields.get('id') ?? '';
   const title = fields.get('title') ?? '';
   const status = fields.get('status') ?? '';
@@ -114,7 +143,7 @@ function read(kind: 'adr' | 'task', file: string): Record_ | undefined {
   if (title === '') fail(file, '`title` is required');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) fail(file, `\`date\` must be YYYY-MM-DD, got \`${date}\``);
 
-  const allowed: readonly string[] = kind === 'adr' ? ADR_STATUSES : TASK_STATUSES;
+  const allowed: readonly string[] = STATUSES[kind];
   if (!allowed.includes(status)) {
     fail(file, `\`status\` must be one of ${allowed.join(' | ')}, got \`${status}\``);
   }
@@ -126,7 +155,7 @@ function read(kind: 'adr' | 'task', file: string): Record_ | undefined {
   }
 
   const sections = topLevelSections(source);
-  const expected = kind === 'adr' ? ADR_SECTIONS : TASK_SECTIONS;
+  const expected = SECTIONS[kind];
   if (sections.length !== expected.length || expected.some((name, i) => sections[i] !== name)) {
     fail(
       file,
@@ -149,12 +178,12 @@ function read(kind: 'adr' | 'task', file: string): Record_ | undefined {
     title,
     status,
     date,
-    refs: parseList(fields.get(kind === 'adr' ? 'supersedes' : 'adr')),
+    refs: parseList(fields.get(REF_FIELD[kind])),
     sections,
   };
 }
 
-function collect(kind: 'adr' | 'task'): readonly Record_[] {
+function collect(kind: Kind): readonly Record_[] {
   const files = readdirSync(join(DOCS_ROOT, FOLDER[kind]))
     .filter((name) => name.endsWith('.md'))
     .sort();
@@ -163,7 +192,7 @@ function collect(kind: 'adr' | 'task'): readonly Record_[] {
   // Ids are sequential and never reused, so a gap is either a deleted record (which the contract
   // forbids) or a typo. Either way it is worth a red build rather than a quiet hole in the index.
   records.forEach((record, index) => {
-    const expected = `${kind === 'adr' ? 'ADR' : 'TASK'}-${String(index + 1).padStart(4, '0')}`;
+    const expected = `${ID_PREFIX[kind]}-${String(index + 1).padStart(4, '0')}`;
     if (record.id !== expected) {
       fail(record.file, `ids must be sequential with no gaps — expected ${expected} here`);
     }
@@ -172,35 +201,54 @@ function collect(kind: 'adr' | 'task'): readonly Record_[] {
   return records;
 }
 
-function renderIndex(adrRecords: readonly Record_[], taskRecords: readonly Record_[]): string {
+/** A row whose `Decisions` column lists the records the document names — shared by the task and
+ * specification tables, which differ only in their folder. */
+function refRows(records: readonly Record_[], folder: string): string {
+  return records
+    .map((r) => {
+      const refs = r.refs.length === 0 ? '—' : r.refs.join(', ');
+      return `| [${r.id}](${folder}/${r.file}) | ${r.title} | ${r.status} | ${refs} |`;
+    })
+    .join('\n');
+}
+
+function renderIndex(
+  adrRecords: readonly Record_[],
+  specRecords: readonly Record_[],
+  taskRecords: readonly Record_[],
+): string {
   const adrRows = adrRecords
     .map((r) => `| [${r.id}](adr/${r.file}) | ${r.title} | ${r.status} | ${r.date} |`)
     .join('\n');
-  const taskRows = taskRecords
-    .map((r) => {
-      const refs = r.refs.length === 0 ? '—' : r.refs.join(', ');
-      return `| [${r.id}](tasks/${r.file}) | ${r.title} | ${r.status} | ${refs} |`;
-    })
-    .join('\n');
+  const specRows = refRows(specRecords, FOLDER.spec);
+  const taskRows = refRows(taskRecords, FOLDER.task);
 
   return `# Documentation index
 
 <!-- Generated by \`bun run docs-index -- --write\`. Do not edit by hand: CI regenerates this file
      and fails if it differs from what the records say. -->
 
-This project tracks two kinds of document, kept strictly separate by intent.
+This project tracks three kinds of document, kept strictly separate by intent.
 [\`adr/\`](adr/) records a decision and its trade-offs — *why was it built this way*.
+[\`spec/\`](spec/) records what the system is — *what are we building* (ADR-0015).
 [\`tasks/\`](tasks/) records a unit of work and its acceptance criteria — *what needs doing, and how
 we know it is done*. The brief this repository answers is in [\`assignment.md\`](assignment.md).
 
 Before starting work: read this index, find the task with \`status: ready\`, read that task in full,
-then read every ADR in its \`adr:\` field in full. Only then write code.
+then read the specifications it builds and every ADR in its \`adr:\` field in full. Only then write
+code.
 
 ## Architecture decision records
 
 | ID | Title | Status | Date |
 |---|---|---|---|
 ${adrRows}
+
+## Application specification
+
+| ID | Title | Status | Decisions |
+|---|---|---|---|
+${specRows}
 
 ## Implementation tasks
 
@@ -213,6 +261,7 @@ ${taskRows}
 - Ids are sequential per folder, zero-padded to four digits, never reused or renumbered.
 - ADRs are immutable once accepted. To change a decision, write a superseding record that names the
   one it replaces in its \`supersedes\` field.
+- A specification is mutable and is corrected in place; only a change of *decision* needs a record.
 - A task moves \`draft\` → \`ready\` → \`in-progress\` → \`done\`, and only one task is
   \`in-progress\` at a time.
 - Completing a task flips its status and puts its id in the commit message.
@@ -220,14 +269,15 @@ ${taskRows}
 }
 
 const adrs = collect('adr');
+const specs = collect('spec');
 const tasks = collect('task');
 
 // Cross-folder integrity: a task pointing at a record that does not exist is a reading-order
 // instruction that dead-ends, which is the one failure the mandatory reading order cannot survive.
 const adrIds = new Set(adrs.map((record) => record.id));
-for (const task of tasks) {
-  for (const ref of task.refs) {
-    if (!adrIds.has(ref)) fail(task.file, `\`adr:\` names ${ref}, which does not exist`);
+for (const record of [...specs, ...tasks]) {
+  for (const ref of record.refs) {
+    if (!adrIds.has(ref)) fail(record.file, `\`adr:\` names ${ref}, which does not exist`);
   }
 }
 for (const adr of adrs) {
@@ -249,7 +299,7 @@ if (inProgress.length > 1) {
   );
 }
 
-const expectedIndex = renderIndex(adrs, tasks);
+const expectedIndex = renderIndex(adrs, specs, tasks);
 const write = process.argv.includes('--write');
 
 if (problems.length > 0) {
@@ -265,7 +315,7 @@ if (problems.length > 0) {
 if (write) {
   writeFileSync(INDEX_PATH, expectedIndex);
   console.log(
-    `docs-index: wrote ${basename(INDEX_PATH)} (${adrs.length} ADRs, ${tasks.length} tasks)`,
+    `docs-index: wrote ${basename(INDEX_PATH)} (${adrs.length} ADRs, ${specs.length} specs, ${tasks.length} tasks)`,
   );
 } else {
   let actual = '';
@@ -281,7 +331,9 @@ if (write) {
     console.error('docs-index: docs/README.md is stale. Run `bun run docs-index -- --write`.');
     process.exit(1);
   }
-  console.log(`docs-index: index is current (${adrs.length} ADRs, ${tasks.length} tasks)`);
+  console.log(
+    `docs-index: index is current (${adrs.length} ADRs, ${specs.length} specs, ${tasks.length} tasks)`,
+  );
 }
 
 for (const warning of warnings) console.warn(`docs-index warning: ${warning}`);
