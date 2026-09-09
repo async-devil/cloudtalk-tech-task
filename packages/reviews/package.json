@@ -1,0 +1,24 @@
+{
+  "name": "@repo/reviews",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "kysely": "0.29.3",
+    "zod": "4.4.3",
+    "@repo/entities": "workspace:*",
+    "@repo/jobs": "workspace:*",
+    "@repo/kernel": "workspace:*",
+    "@repo/observability": "workspace:*",
+    "@repo/persistence": "workspace:*"
+  },
+  "devDependencies": {
+    "testcontainers": "12.0.4",
+    "vitest": "4.1.10"
+  }
+}
