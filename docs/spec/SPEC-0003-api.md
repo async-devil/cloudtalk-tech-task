@@ -3,7 +3,7 @@ id: SPEC-0003
 title: The API — contract namespaces, wire shapes, pagination and failure
 status: draft
 supersedes: []
-adr: [ADR-0004, ADR-0008, ADR-0016, ADR-0017]
+adr: [ADR-0004, ADR-0008, ADR-0016, ADR-0018]
 date: 2026-09-09
 ---
 
@@ -86,6 +86,11 @@ reviewSummary = {
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),      // differs from createdAt ⟺ edited
 }
+
+moderationReviewSummary = reviewSummary + {
+  productName, productSlug,
+  moderationState: z.enum(['published', 'rejected']),   // 'pending' is seeded, never returned (SPEC-0002)
+}
 ```
 
 `pageOf(item)` is `{ items: item[], nextCursor: string | null }`. One page shape for every list, so
@@ -103,10 +108,14 @@ the SPA has one paging component and one exhaustion test.
 | `reviews.remove` | `DELETE /reviews/{reviewToken}` | **required** | `{ token }` |
 | `products.create` | `POST /products` | **capability** | `productDetail` |
 | `products.update` | `PATCH /products/{productSlug}` | **capability** | `productDetail` |
+| `reviews.moderationList` | `GET /moderation/reviews` | **capability** | `pageOf(moderationReviewSummary)` |
+| `reviews.reject` | `POST /reviews/{reviewToken}/reject` | **capability** | `reviewSummary` |
+| `reviews.restore` | `POST /reviews/{reviewToken}/restore` | **capability** | `reviewSummary` |
 
-"**capability**" means a resolved session whose user holds `catalogue_manager` (ADR-0017). It is a
-strictly stronger requirement than "required": no session is `401`, a session without the capability
-is `403`.
+"**capability**" means a resolved session whose user holds the capability the route needs
+(`catalogue_manager` for the two `products.*` routes above, `moderator` for the three `reviews.*`
+routes below — ADR-0018, and never the other one). It is a strictly stronger requirement than
+"required": no session is `401`, a session without the right capability is `403`.
 
 #### `products.list`
 
@@ -167,6 +176,29 @@ what the "edited" marker reads (SPEC-0001). Emits the same recomputation event a
 Input `{ reviewToken }`. Same ownership rule and the same event. Returns the removed token so the
 client can reconcile its cache without a refetch race.
 
+#### `reviews.moderationList`
+
+Input `{ state?: 'published' | 'rejected', cursor?, limit? (≤50, default 20) }`, default `state`
+`'published'`. Requires `moderator`. Newest-first, keyset-paginated the same way as
+`reviews.listForProduct`, but **not scoped to one product and not filtered to `published` only** —
+it is the one route in this contract that reads a review regardless of its moderation state, which
+is exactly what a moderator needs and exactly why it is capability-gated rather than anonymous.
+
+Output rows are `moderationReviewSummary`: `reviewSummary`'s fields plus `productName`,
+`productSlug` and `moderationState`, so the moderation screen (SPEC-0001 S8) needs no second call
+per row to say which product a review belongs to.
+
+#### `reviews.reject` / `reviews.restore`
+
+Input `{ reviewToken }`. Requires `moderator`. Both are `POST`, not `PATCH`: neither takes a body
+beyond the identifier, and "reject" / "restore" are the verbs, not a field flip a client could get
+backwards. Unknown token → `NOT_FOUND`. Rejecting an already-`rejected` review, or restoring an
+already-`published` one, is a no-op that returns the current row rather than an error — idempotent
+by the same reasoning `reviews.submit`'s deterministic id is (SPEC-0004).
+
+Both emit the recomputation event `reviews.submit` emits, naming the review's product, because
+whether a review counts toward the aggregate just changed (SPEC-0004).
+
 #### `products.create`
 
 Input `{ name, description, categoryName, priceMinor, currencyCode, sku, slug? }`. Requires the
@@ -204,7 +236,7 @@ where `code` is one of `ERROR_CODES`. **Status mapping happens only in
 |---|---|---|
 | `VALIDATION` | 400 | Input schema, an out-of-range `limit`, an unusable cursor |
 | `UNAUTHORIZED` | 401 | Write routes with no resolved session |
-| `FORBIDDEN` | 403 | Editing or deleting a review the session does not own; creating or editing a product without `catalogue_manager` |
+| `FORBIDDEN` | 403 | Editing or deleting a review the session does not own; creating or editing a product without `catalogue_manager`; moderating a review without `moderator` |
 | `NOT_FOUND` | 404 | Unknown product slug; unknown review on a read |
 | `CONFLICT` | 409 | The one-review-per-author constraint |
 | `RATE_LIMITED` | 429 | The limiter, carrying `Retry-After` |
@@ -218,7 +250,7 @@ The 403-for-a-missing-review rule is asserted at the HTTP layer, not as a unit t
 
 ### Limits
 
-The existing baseline (ADR-0017, `apps/api/src/http/security/rate-limit.ts`) has two buckets: `auth`
+The existing baseline (ADR-0018, `apps/api/src/http/security/rate-limit.ts`) has two buckets: `auth`
 (every `/api/auth/*` request) and `unauthenticated-post` (a POST with no session), both keyed by
 client IP, both answering `429` with `Retry-After`. That list is marked frozen in the source, and
 TASK-0003 asks for two things it does not cover: a limit on **unauthenticated reads**, and a limit on
@@ -249,39 +281,48 @@ second source of truth that starts wrong the first time a route changes.
 
 ```ts
 canManageCatalogue: z.boolean()
+canModerate: z.boolean()
 ```
 
-It is an **affordance, not an authorization**: the SPA renders or hides the authoring surface with
-it, and the server refuses the write regardless of what the client believes. The test that proves
-the distinction calls `products.create` with a session that lacks the capability and expects `403` —
-asserted at the HTTP layer, because a guard that is correct in isolation and unwired looks identical
-to one that works (ADR-0017).
+Both are **affordances, not authorizations**: the SPA renders or hides the corresponding surface
+with them, and the server refuses the write regardless of what the client believes. The test that
+proves the distinction calls `products.create` and, separately, `reviews.reject` with a session that
+lacks the matching capability and expects `403` from each — asserted at the HTTP layer, because a
+guard that is correct in isolation and unwired looks identical to one that works (ADR-0018).
 
-The field's name says what the client may *show*, not what the row stores (`catalogue_manager`); the
-two are deliberately different words so nobody mistakes the payload for the source of truth.
+Each field's name says what the client may *show*, not what the row stores (`catalogue_manager`,
+`moderator`); the wording is deliberately different from the column so nobody mistakes the payload
+for the source of truth.
 
 ### What the SPA does with this
 
 `shared/api` types its client from `appContract` (already), `shared/query-keys` derives keys from
-`apiQuery` (already). Two invalidation rules worth stating because they are easy to get wrong:
+`apiQuery` (already). Invalidation rules worth stating because they are easy to get wrong:
 submitting, editing or deleting a review invalidates that product's **review list** and nothing else;
-the **aggregate** is left alone, because it is not updated yet (ADR-0014, SPEC-0001 rule 7).
+the **aggregate** is left alone, because it is not updated yet (ADR-0014, SPEC-0001 rule 13).
+Rejecting or restoring a review invalidates **both** the moderation list's row (S8 stays correct in
+place) and, if the reviewer happens to have that product's detail screen open, its review list — the
+same review-list query key `reviews.submit` already invalidates.
 
 ## Open questions
 
-1. **The two new rate-limit buckets** need a record: ADR-0017's bucket list is stated as frozen, and
+1. **The two new rate-limit buckets** need a record: ADR-0018's bucket list is stated as frozen, and
    this document deliberately does not unfreeze it. Proposal: a short record accepting
    `anonymous-read` and `review-submission` with the keys above.
 2. **`authorLabel`** depends on SPEC-0001's open question 1. Until it is settled, the field is
    specified as "a stable, non-identifying label" and the derivation is not fixed here.
-3. **Granting the capability has no surface.** `catalogue_manager` is set by seed or by a database
-   update; there is no admin screen for it, and ADR-0017 records that as deliberate for a system
-   with one manager. The day there are ten, it needs one.
+3. **Granting either capability has no surface.** Both are set by seed or by a database update;
+   there is no admin screen for either, and ADR-0018 records that as deliberate for a system with
+   one manager and one moderator. The day there are ten of either, it needs one.
 4. **`reviews.listMine`** (an author's own reviews across products) is not specified: no screen in
    SPEC-0001 needs it. `ix_review__author_id` already serves it if a screen appears.
 5. **Cursor stability across a sort change** is handled by rejecting a cursor that does not match the
    current sort. An alternative — encoding the sort into the cursor and ignoring the parameter — is
    friendlier and hides a client bug; rejection is proposed for that reason.
+
+6. **Moderation actions carry no rate limit of their own.** They are capability-gated already, and a
+   moderator flooding their own tool is not the threat model the anonymous-read and
+   review-submission buckets exist for. Not proposed unless that assumption stops holding.
 
 ## Traceability
 
@@ -291,13 +332,15 @@ the **aggregate** is left alone, because it is not updated yet (ADR-0014, SPEC-0
 | Wire vocabulary: slugs for catalogue rows, tokens for user-owned ones | ADR-0016 | TASK-0003 |
 | Zod bounds mirroring the DDL checks | ADR-0004, SPEC-0002 | TASK-0002, TASK-0003 |
 | Read split: list reads the projection, reviews read the truth | ADR-0014 | TASK-0003 |
-| Session requirement and the pre-pipeline 401 | ADR-0017 | TASK-0003 |
-| `products.create` / `products.update` and the capability gate | ADR-0017 | TASK-0008 |
+| Session requirement and the pre-pipeline 401 | ADR-0018 | TASK-0003 |
+| `products.create` / `products.update` and the capability gate | ADR-0018 | TASK-0008 |
 | Slug derivation, slug/SKU immutability on the wire | ADR-0016 | TASK-0008 |
-| `canManageCatalogue` in the bootstrap payload | ADR-0017 | TASK-0008 |
+| `canManageCatalogue` in the bootstrap payload | ADR-0018 | TASK-0008 |
+| `reviews.moderationList` / `reject` / `restore` and the capability gate | ADR-0018 | TASK-0009 |
+| `canModerate` in the bootstrap payload | ADR-0018 | TASK-0009 |
 | Ownership rules (403), conflict (409) | ADR-0008 | TASK-0003 |
 | Error mapping in one place, generic 5xx bodies | ADR-0008 | TASK-0003 |
 | Pagination bounds and cursor rules | ADR-0004 | TASK-0003 |
-| Rate-limit buckets (pending a record) | ADR-0017 | TASK-0003 |
+| Rate-limit buckets (pending a record) | ADR-0018 | TASK-0003 |
 | Generated OpenAPI document | ADR-0004 | TASK-0003 |
 | Client typing and invalidation rules | ADR-0012 | TASK-0004 |

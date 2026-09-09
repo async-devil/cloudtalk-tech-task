@@ -24,6 +24,9 @@ Production data loading. Fixture generation for tests, which each suite owns.
       matched by slug.
 - [ ] Seeded products carry a readable slug and a valid SKU, and exactly one seeded account holds
       `catalogue_manager`, so both the authoring surface and its 403 are reachable after setup.
+- [ ] At least one seeded account holds `moderator`, and at least one seeded review is left
+      `rejected`, so the moderation screen's filter and its `rejected` view are both exercisable
+      immediately after setup.
 - [ ] Seeded data exercises the projection — at least one product has enough reviews that the
       aggregate is not trivially equal to a single rating.
 - [ ] Seeded ratings are not uniformly distributed; the product list's sort is visibly meaningful.

@@ -3,7 +3,7 @@ id: SPEC-0002
 title: The data model — the reviews schema, its vocabularies and its projection
 status: draft
 supersedes: []
-adr: [ADR-0006, ADR-0014, ADR-0016, ADR-0017]
+adr: [ADR-0006, ADR-0014, ADR-0016, ADR-0018]
 date: 2026-09-09
 ---
 
@@ -29,16 +29,22 @@ One schema per bounded context (ADR-0016). The `reviews` module owns schema `rev
 vocabularies live in `reference`, which belongs to no single module, alongside the spine's four. No
 other module reads these tables — a cross-module read is a typed port or an event (ADR-0001).
 
-Two migration files, both on the single global index sequence (ADR-0006: one folder, one sequence,
-so cross-module ordering is not a matter of luck), hand-written, append-only, immutable once merged:
+Three migration files, all on the single global index sequence (ADR-0006: one folder, one
+sequence, so cross-module ordering is not a matter of luck), hand-written, append-only, immutable
+once merged:
 
 - **`0004-create-reviews.ts`** — everything below.
 - **`0005-add-app-user-catalogue-manager.ts`** — one statement:
   `ALTER TABLE auth.app_user ADD COLUMN catalogue_manager boolean NOT NULL DEFAULT false`. It is a
   separate file rather than an edit to `0003-create-auth.ts` because a merged migration is
   immutable, and it belongs to the `auth` schema rather than to `reviews` because the capability is
-  a property of the user, not of the catalogue (ADR-0017). `NOT NULL DEFAULT false`: the
+  a property of the user, not of the catalogue (ADR-0018). `NOT NULL DEFAULT false`: the
   `nullable-boolean` rule forbids the third state, and "unknown" is not a capability anyone holds.
+- **`0006-add-app-user-moderator.ts`** — the same shape, one statement:
+  `ALTER TABLE auth.app_user ADD COLUMN moderator boolean NOT NULL DEFAULT false`. A separate file
+  from `0005` for the same reason `0005` is separate from `0003`: each capability is its own
+  reviewed change (ADR-0018), and a migration that added two columns for two unrelated grants would
+  read as one decision when it is two.
 
 ### `reference.product_category`
 
@@ -70,9 +76,11 @@ CREATE TABLE reference.review_moderation_state (
 ```
 
 Values: `(1, 'published')`, `(2, 'pending')`, `(3, 'rejected')`. Every review is created
-`published` in v1 and nothing transitions it (SPEC-0001: there is no moderator actor). The column
-exists so the read path filters on state from day one; adding moderation later is a screen and a
-role, not a migration and a rewritten query.
+`published`. A moderator (ADR-0018) may transition a review between `published` and `rejected`;
+`pending` remains seeded and unused — reserved for a future reporting flow, not written by anything
+in v1. The transition is a plain `UPDATE` of `review_moderation_state_id`, the same statement whether
+moving forward or back, so "reject" and "restore" are one code path reading two different target
+ids rather than two.
 
 ### `reviews.product`
 
@@ -305,8 +313,11 @@ product carries enough reviews that its average is not trivially one rating (TAS
 at least one product has exactly one review, and at least one has none — the three states SPEC-0001's
 screens must render.
 
-One seeded account has `catalogue_manager = true`, so the authoring surface (SPEC-0001 screen S7) is
-reachable immediately after `bun run setup`; the rest do not, so the 403 path is reachable too.
+One seeded account has `catalogue_manager = true` and a second (may be the same account, may be
+different) has `moderator = true`, so both authoring (S7) and moderation (S8) surfaces are reachable
+immediately after `bun run setup`, and the 403 path for each is reachable through every other seeded
+account. At least one seeded review is left `rejected`, so the moderation screen's `rejected` filter
+has something to show on a fresh checkout rather than only on a hand-tested one.
 
 Seeding is idempotent by slug — the natural key is what makes "insert or update" expressible without
 a second identifier — and it enqueues a recomputation per product rather than writing
@@ -343,10 +354,11 @@ a second identifier — and it enqueues a recomputation per product rather than 
 | `reference.product_category`, `reference.review_moderation_state` | ADR-0016 | TASK-0002 |
 | `reviews.product`, `reviews.review` | ADR-0016 | TASK-0002 |
 | Slug and SKU identity, and their immutability | ADR-0016 | TASK-0002, TASK-0008 |
-| `auth.app_user.catalogue_manager` | ADR-0017 | TASK-0008 |
+| `auth.app_user.catalogue_manager` | ADR-0018 | TASK-0008 |
+| `auth.app_user.moderator`, moderation state transitions | ADR-0018 | TASK-0009 |
 | One-review-per-author unique constraint → typed `ConflictError` | ADR-0008, ADR-0016 | TASK-0002, TASK-0003 |
 | `reviews.product_rating`, its nullability rule and `computed_at` | ADR-0014 | TASK-0002, TASK-0005 |
 | Entity vocabularies and their parity tests | ADR-0003, ADR-0010 | TASK-0002 |
 | Lifecycle registry rows | ADR-0006 | TASK-0002 |
-| Public identifiers and the wire/internal id split | ADR-0016, ADR-0017 | TASK-0002, TASK-0003 |
+| Public identifiers and the wire/internal id split | ADR-0016, ADR-0018 | TASK-0002, TASK-0003 |
 | Seed shape and idempotence | ADR-0005 | TASK-0006 |
