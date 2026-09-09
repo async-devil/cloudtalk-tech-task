@@ -1,0 +1,32 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Like `apps/api`: this app is a LEAF — nothing imports its build output. Vite produces the
+    // deployable bundle (`moon run app:build`), so `tsc` exists here only to typecheck. `noEmit`
+    // also sidesteps the `dist/` mirroring trap `apps/api`'s own comment records, and keeps
+    // dep-cruiser looking at real source paths.
+    "noEmit": true,
+    // React 19's automatic JSX runtime — same setting `packages/styles` uses.
+    "jsx": "react-jsx",
+    // A browser bundle: the DOM lib is the API surface here, and `import.meta.env` needs Vite's
+    // client types. Adding libs/types is not weakening a strictness flag — every `strict`/
+    // `exactOptionalPropertyTypes`/`noUncheckedIndexedAccess` setting is inherited untouched.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"]
+  },
+  // `test`/`e2e` are included deliberately: `include: ["src"]` alone would mean `tsc --noEmit`
+  // never typechecks the suites. Safe here precisely because `noEmit` is on, so including tests
+  // cannot leak them into a build output that does not exist.
+  // `node-ambient.d.ts` is listed explicitly: it sits at the project root (shared by `scripts/`
+  // and `e2e/`, neither of which may own it — see that file's header) so no `include` glob would
+  // otherwise pick it up.
+  "include": [
+    "src",
+    "test",
+    "e2e",
+    "scripts",
+    "node-ambient.d.ts",
+    "vite.config.ts",
+    "vitest.config.ts"
+  ]
+}

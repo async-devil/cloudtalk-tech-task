@@ -1,0 +1,103 @@
+language: typescript
+layer: application
+
+# NOT `liftable`, and that is the rule rather than an omission: apps are DEPLOYABLES, the named
+# exception in ADR-0001's extraction contract. `tools/extract-module` proves a *module* can be
+# lifted out of the workspace; a browser bundle's whole job is to compose modules.
+tags:
+  - tier-app
+
+tasks:
+  # The inherited `build: tsc` (.moon/tasks/all.yml) is WRONG for this project: `tsc` here is
+  # `noEmit` (tsconfig.json's own note), so the inherited task would produce nothing and call it a
+  # build, and the real deployable — the bundled, Tailwind-processed, hashed asset set — would
+  # never be built by `moon ci` at all. Vite is the builder; `typecheck` (still inherited, still
+  # `tsc --noEmit`) keeps the type gate.
+  build:
+    command: 'vite build'
+    deps:
+      - '^:build'
+    inputs:
+      - 'src/**/*'
+      - 'index.html'
+      - 'vite.config.ts'
+      - 'tsconfig.json'
+      - '/packages/styles/src/**/*'
+    outputs:
+      - 'dist'
+
+  dev:
+    command: 'vite'
+    options:
+      cache: false
+      runInCI: false
+
+  # Regenerates the committed route tree from `src/routes/**`. The biome pass makes the output
+  # byte-stable under the repo formatter — the same trick `apps/api:codegen` uses on kysely's
+  # output, and what lets the freshness check below be an exact comparison.
+  #
+  # A generator, not a gate: run it after adding or renaming a route file. `route-tree-check` is
+  # what CI runs.
+  route-tree:
+    script: 'tsr generate && biome check --write src/routeTree.gen.ts'
+    options:
+      cache: false
+      runInCI: false
+
+  # The codegen-freshness gate ("regenerate and diff"), mirroring `api:env-example-check`. A route
+  # file added without regenerating the tree is a route that exists on disk and not in the app —
+  # invisible, and exactly the drift this pair exists to catch.
+  route-tree-check:
+    command: 'bun'
+    args:
+      - 'scripts/check-route-tree.ts'
+    deps:
+      - '^:build'
+    inputs:
+      - 'src/routes/**/*'
+      - 'src/routeTree.gen.ts'
+      - 'tsr.config.json'
+      - 'scripts/check-route-tree.ts'
+    options:
+      runInCI: true
+
+  # Playwright, both projects, no `--project` filter.
+  #
+  # `runInCI: false` means "not part of `moon ci`". It does NOT mean "does not run in CI":
+  # `.github/workflows/ci.yml`'s dedicated `e2e` job runs this suite, and
+  # `tools/arch-checks/required-gates.json` lists that job id so removing it is a loud diff.
+  #
+  # THE CI JOB DOES NOT GO THROUGH MOON, and this comment is the only place that is explained.
+  # moon honours `runInCI: false` for an explicit `moon run <target>` as well, not just for
+  # `moon ci`: under `CI=true` it reports "No tasks found. Unable to execute action pipeline." and
+  # exits 1 (verified on a GitHub runner, reproduced locally with `CI=true moon run app:e2e`). The
+  # job therefore calls `bun run e2e` in `apps/app` directly. Keep this task anyway — it is the
+  # documented local entry point, and `moon run app:e2e` works fine off CI.
+  #
+  # The exclusion from `moon ci` is forced, not chosen: this needs a Playwright browser binary
+  # (`playwright install chromium`), which the `ci` job does not install, AND `docker compose -f
+  # deploy/compose/dev.yml` on fixed host ports rather than the ephemeral per-suite Testcontainers
+  # pattern the rest of `moon ci`'s `test-integration` tasks use — i.e. this is NOT the "Docker
+  # services the per-PR chain already starts" case that lets those run with no override. The `e2e`
+  # job supplies both, which is why it is a job rather than a task.
+  e2e:
+    command: 'bun'
+    args:
+      - 'run'
+      - 'e2e'
+    deps:
+      - '^:build'
+      # The api half of the `webServer` stack: `harness/start-api-server.ts` spawns the REAL
+      # `apps/api` composition root and its migrator, so every package the API imports needs its
+      # `dist/` built too — `^:build` covers only what `apps/app` itself depends on. Its absence
+      # shows up as `Cannot find module '@repo/config'` from the migrator, and only on a machine
+      # that has not already built the workspace for some other reason.
+      - 'api:build'
+    inputs:
+      - 'e2e/**/*'
+      - 'src/**/*'
+      - '/apps/api/src/**/*'
+      - '/deploy/compose/**/*'
+    options:
+      cache: false
+      runInCI: false
