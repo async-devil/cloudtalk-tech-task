@@ -1,7 +1,7 @@
 ---
 id: SPEC-0004
 title: Aggregation and events — the outbox, the relay, and the rating projection
-status: draft
+status: accepted
 supersedes: []
 adr: [ADR-0007, ADR-0009, ADR-0014, ADR-0018]
 date: 2026-09-09

@@ -1,7 +1,7 @@
 ---
 id: SPEC-0001
 title: The product — actors, rules, journeys and screens
-status: draft
+status: accepted
 supersedes: []
 adr: [ADR-0012, ADR-0014, ADR-0016, ADR-0018]
 date: 2026-09-09

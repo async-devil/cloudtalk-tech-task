@@ -1,7 +1,7 @@
 ---
 id: SPEC-0002
 title: The data model — the reviews schema, its vocabularies and its projection
-status: draft
+status: accepted
 supersedes: []
 adr: [ADR-0006, ADR-0014, ADR-0016, ADR-0018]
 date: 2026-09-09
