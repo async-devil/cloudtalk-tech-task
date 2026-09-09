@@ -1,0 +1,29 @@
+{
+  "name": "@repo/auth",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@repo/config": "workspace:*",
+    "@repo/contracts": "workspace:*",
+    "@repo/entities": "workspace:*",
+    "@repo/kernel": "workspace:*",
+    "@repo/messaging": "workspace:*",
+    "@repo/observability": "workspace:*",
+    "@repo/persistence": "workspace:*",
+    "better-auth": "1.6.23",
+    "elysia": "1.4.29",
+    "kysely": "0.29.3",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "pg": "8.22.0",
+    "testcontainers": "12.0.4",
+    "vitest": "4.1.10"
+  }
+}

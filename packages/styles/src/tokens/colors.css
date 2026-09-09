@@ -1,0 +1,94 @@
+/*
+ * Semantic colour scale + elevation.
+ *
+ * Every name is SEMANTIC (what the value is *for*), never a hue or a number: `--color-danger`, not
+ * `--color-red-600`. A hue name in a token defeats re-branding, because the next brand's "danger"
+ * may not be red at all. the token checks makes that mechanical for app code.
+ *
+ * The placeholder palette is deliberately NEUTRAL (greys + one restrained blue accent): a
+ * repository must not ship someone else's brand.
+ *
+ * WHY ELEVATION LIVES HERE, and it is a judgment call worth naming: froze five token files —
+ * colors, typography, spacing, motion, base — and `--shadow-*` fits none of their names exactly.
+ * It sits with colour because a shadow's value IS a colour (`oklch(0% 0 0 / 8%)`); a re-brand that
+ * darkens shadows edits them beside the palette they are tinted from, which is the seam this split
+ * exists to keep sharp.
+ *
+ * WHY EACH TOKEN IS DECLARED TWICE — read this before "simplifying" it away. The `:root` block
+ * holds the VALUES; the `@theme inline` block only REGISTERS the name with Tailwind so the
+ * matching utilities exist (`--color-surface` -> `bg-surface`/`text-surface`/`border-surface`).
+ * Two blocks, one value, no duplication of any number.
+ *
+ * The reason is measured, not assumed (2026-07-29, real Chromium): custom properties declared
+ * inside Tailwind's `@theme` at-rule are INVISIBLE to a plain browser — an unknown at-rule is
+ * invalid CSS and the parser discards it whole, so `getComputedStyle` returns empty for every
+ * token in it. specimen cards are static HTML with NO build step that `@import` this file
+ * and render `var(--token)`, so a `@theme`-only declaration would leave every card blank while the
+ * app looked fine. `@theme inline` tells Tailwind to emit `var(--color-surface)` at each use site
+ * rather than inventing its own copy of the value, so the `:root` block below is the single source
+ * for both consumers.
+ */
+
+:root {
+  /* ---- Surfaces ------------------------------------------------------------------------ */
+  --color-surface: oklch(99% 0 0);
+  --color-surface-raised: oklch(100% 0 0);
+  --color-surface-sunken: oklch(96.5% 0 0);
+
+  /* ---- Content ------------------------------------------------------------------------- */
+  --color-content: oklch(22% 0 0);
+  --color-content-muted: oklch(52% 0 0);
+  --color-content-inverted: oklch(99% 0 0);
+
+  /* ---- Lines --------------------------------------------------------------------------- */
+  --color-border: oklch(90% 0 0);
+  --color-border-strong: oklch(78% 0 0);
+
+  /* ---- Intent -------------------------------------------------------------------------- */
+  --color-accent: oklch(52% 0.16 255);
+  --color-accent-hover: oklch(46% 0.16 255);
+  --color-accent-content: oklch(99% 0 0);
+  --color-danger: oklch(52% 0.19 27);
+  --color-danger-hover: oklch(46% 0.19 27);
+  --color-danger-content: oklch(99% 0 0);
+  --color-danger-surface: oklch(96% 0.03 27);
+  --color-success: oklch(52% 0.13 150);
+  --color-warning: oklch(60% 0.13 75);
+
+  /* ---- Focus --------------------------------------------------------------------------- */
+  /* Its own token, not an alias of --color-accent: the focus ring must stay legible against
+     every surface even when a brand recolours the accent into something low-contrast. */
+  --color-focus-ring: oklch(45% 0.19 255);
+
+  /* ---- Elevation ----------------------------------------------------------------------- */
+  --shadow-raised: 0 1px 2px oklch(0% 0 0 / 8%);
+  --shadow-overlay: 0 8px 24px oklch(0% 0 0 / 14%);
+}
+
+@theme inline {
+  --color-surface: var(--color-surface);
+  --color-surface-raised: var(--color-surface-raised);
+  --color-surface-sunken: var(--color-surface-sunken);
+
+  --color-content: var(--color-content);
+  --color-content-muted: var(--color-content-muted);
+  --color-content-inverted: var(--color-content-inverted);
+
+  --color-border: var(--color-border);
+  --color-border-strong: var(--color-border-strong);
+
+  --color-accent: var(--color-accent);
+  --color-accent-hover: var(--color-accent-hover);
+  --color-accent-content: var(--color-accent-content);
+  --color-danger: var(--color-danger);
+  --color-danger-hover: var(--color-danger-hover);
+  --color-danger-content: var(--color-danger-content);
+  --color-danger-surface: var(--color-danger-surface);
+  --color-success: var(--color-success);
+  --color-warning: var(--color-warning);
+
+  --color-focus-ring: var(--color-focus-ring);
+
+  --shadow-raised: var(--shadow-raised);
+  --shadow-overlay: var(--shadow-overlay);
+}

@@ -1,0 +1,37 @@
+/*
+ * The base layer — the only rules in this package that apply to elements rather than to a class
+ *.
+ *
+ * Deliberately tiny. A design system's base layer is where scope creep starts: every element
+ * styled here is one a feature cannot opt out of, so the bar is "the token seam does not reach the
+ * page without it".
+ *
+ * Two rules clear that bar today:
+ *
+ * 1. `body` takes `--color-surface`/`--color-content`. Without this the neutral placeholder
+ * palette never actually paints anything — a re-brand would change every control and leave the
+ * page itself the user-agent default, which is the exact seam failure this package exists to
+ * prevent.
+ * 2. `:focus-visible` gets a token-coloured fallback ring. The interactive primitives each carry
+ * their own (`internal/interactive-base.ts`), so this is the floor under everything that is
+ * NOT a primitive — a raw `<a>` in prose, a `tabindex` container in a feature. Removing a focus
+ * indicator is the single most common accessibility regression in a codebase, and the base
+ * layer is the only place to make forgetting it impossible.
+ *
+ * `@layer base` matters: it puts these below every utility in the cascade, so any Tailwind class a
+ * caller writes wins without needing `!important`.
+ */
+
+@layer base {
+  body {
+    background-color: var(--color-surface);
+    color: var(--color-content);
+  }
+
+  /* `outline`, never `ring`: an outline survives inside an `overflow-hidden` ancestor, where a
+     box-shadow ring is clipped away and the user loses the indicator entirely. */
+  :focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
+  }
+}

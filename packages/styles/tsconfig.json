@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "composite": true,
+    // React 19 JSX transform — same setting packages/mailing uses for its React Email templates.
+    "jsx": "react-jsx",
+    // The base config ships `lib: ["ES2022"]` for the backend packages. This one renders DOM
+    // elements, so `@types/react`'s intrinsic-element types (HTMLButtonElement, HTMLInputElement,
+    // …) need the DOM lib present. Adding a lib is not weakening a strictness flag — every
+    // `strict`/`exactOptionalPropertyTypes`/`noUncheckedIndexedAccess` setting is inherited
+    // untouched.
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["src"]
+}

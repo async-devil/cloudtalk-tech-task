@@ -1,0 +1,80 @@
+/*
+ * Radii and the size scale.
+ *
+ * Spacing itself is deliberately NOT redeclared here: Tailwind v4 ships a `--spacing` ramp
+ * (`p-2`, `gap-6`, …) that this system has no reason to re-decide, and a token file that restated
+ * it would create a second scale to keep in sync for no gain. What lives here is what this system
+ * genuinely owns — the named radii, and the two sizes that are architectural rather than
+ * decorative.
+ *
+ * BINDING FLOOR: `--size-touch-target` is 2.75rem = 44px, ADR-0012's minimum, carried forward
+ * by ADR-0012. Every interactive primitive spends it as its min-height AND min-width, so a
+ * feature cannot forget it — and note that this is STRICTER than every upstream this repo
+ * vendors: shadcn ships `h-9` (36px) controls, and the floor is reapplied on arrival.
+ *
+ * See `colors.css`'s header for why every token is declared in `:root` and registered separately
+ * in `@theme inline`.
+ */
+
+:root {
+  /* ---- Radii --------------------------------------------------------------------------- */
+  --radius-control: 0.5rem;
+  --radius-surface: 0.75rem;
+  --radius-pill: 9999px;
+
+  /* ---- Sizing -------------------------------------------------------------------------- */
+  --size-touch-target: 2.75rem;
+  --size-control-inset: 0.75rem;
+
+  /*
+   * ---- Safe-area insets ------------------------------------------------
+   *
+   * The notch/home-indicator quartet, in the token layer rather than in whichever component
+   * happened to need it first. Fixed chrome — a sticky header, a bottom bar — spends these so the
+   * Capacitor shell ships notch-correct out of the box.
+   *
+   * `env` with an EXPLICIT `0px` fallback, which is what makes these safe on the web: outside a
+   * WebView the browser resolves `env(safe-area-inset-*)` to the fallback, so the same class list
+   * lays out identically in a desktop browser and on a notched phone. Without the fallback the
+   * whole declaration is invalid-at-computed-value-time and the property resolves to nothing.
+   *
+   * THIS IS ALSO THE REASON THE DELETION TEST CAN LEAVE THEM BEHIND. Deleting the Capacitor
+   * shells removes `capacitor.config.ts` and the native projects; these four tokens stay, and stay
+   * INERT — pure CSS that computes to `0px` in every browser and imports nothing.
+   */
+  --spacing-safe-top: env(safe-area-inset-top, 0px);
+  --spacing-safe-right: env(safe-area-inset-right, 0px);
+  --spacing-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --spacing-safe-left: env(safe-area-inset-left, 0px);
+}
+
+@theme inline {
+  --radius-control: var(--radius-control);
+  --radius-surface: var(--radius-surface);
+  --radius-pill: var(--radius-pill);
+}
+
+/*
+ * `--size-*` AND `--spacing-safe-*` ARE DELIBERATELY ABSENT FROM THE BLOCK ABOVE, and this is a
+ * correctness fix rather than tidiness. Both are consumed through v4's CSS-variable shorthand
+ * instead (`min-h-(--size-touch-target)`, `px-(--size-control-inset)`, `pt-(--spacing-safe-top)`),
+ * which reads the `:root` value directly.
+ *
+ * `--spacing-*` is a different case from `--size-*` and was RE-MEASURED at rather than
+ * assumed from this note: Tailwind *does* generate utilities for it, so registering the safe-area
+ * quartet in `@theme inline` really did emit working `.pt-safe-top{padding-top:var(--spacing-safe-top)}`
+ * rules. It ALSO emitted the same self-reference described below — `--spacing-safe-top:var(--spacing-safe-top)`
+ * at byte ~3.2k against the real `env` value at ~18.9k in the built stylesheet — so the nicer
+ * class names would have been bought with exactly the silent-failure mode this note exists to
+ * describe, and on the one token quartet whose failure (no notch padding) is least visible in a
+ * desktop browser. The registration was removed; the shorthand form is what the app spends.
+ *
+ * Registering them anyway emitted `:root { --size-touch-target: var(--size-touch-target) }` into
+ * the built stylesheet — a SELF-REFERENCE. It happened to be harmless only because Tailwind's
+ * output landed before our `:root` block in source order, so the real value won the cascade.
+ * Measured in the built CSS: the self-reference at byte ~3.2k, the real value at ~18k. Had the
+ * order ever flipped, the custom property would resolve to guaranteed-invalid and the 44px
+ * accessibility floor would silently become nothing — the class would still be in the markup, so
+ * every class-string assertion in the unit tests would still pass. That is precisely why
+ * requires the floor to be proven on a COMPUTED box in the browser as well.
+ */

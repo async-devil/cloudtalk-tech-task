@@ -1,0 +1,51 @@
+language: typescript
+layer: library
+
+# LIFTABLE, and proven: `bun run extract-module styles` copies this package out of the workspace,
+# installs its declared dependencies and runs `tsc` + `vitest run` standalone. Source-shipping
+# (ADR-0001's named exception, see README) does NOT make it unextractable — the exports map points
+# at `src/`, which travels with the copy exactly like `dist/` would.
+#
+# Keep comments ABOVE the `tags:` key, never between its list items: the extraction tool's
+# moon.yml tag parser (tools/extract-module/src/workspace.ts, parseMoonYamlTags) treats any
+# non-list-item line as the end of the block, so an interleaved comment silently drops every tag
+# after it — which presents as "not tagged liftable" on a package that is.
+tags:
+  - tier-capability
+  - liftable
+
+tasks:
+  #: generate `src/tokens/manifest.ts` from the token CSS.
+  # The manifest is what ARMS the adherence gate's undeclared-token-reference rule — the rule that
+  # makes "retokenised" a checkable property rather than a claim.
+  token-manifest:
+    command: 'bun'
+    args:
+      - 'run'
+      - 'scripts/generate-token-manifest.ts'
+    inputs:
+      - 'src/tokens/**/*.css'
+      - 'scripts/generate-token-manifest.ts'
+    outputs:
+      - 'src/tokens/manifest.ts'
+    options:
+      # A generator that writes committed source must not be served from cache: a cache hit would
+      # skip the write and leave a stale manifest looking freshly generated.
+      cache: false
+      runInCI: false
+
+  # Freshness, asserted by regenerate-and-diff — the same mechanism the route tree and the kysely
+  # types use. Generation plus diff IS the both-directions reconciliation ADR-0012 asks for: a
+  # token in the CSS with no manifest entry, and a manifest entry naming no real token, are the
+  # same dirty diff, because the generator's output is a pure function of the CSS.
+  token-manifest-check:
+    command: 'bun'
+    args:
+      - 'run'
+      - 'scripts/check-token-manifest.ts'
+    inputs:
+      - 'src/tokens/**/*'
+      - 'scripts/generate-token-manifest.ts'
+      - 'scripts/check-token-manifest.ts'
+    options:
+      runInCI: true
