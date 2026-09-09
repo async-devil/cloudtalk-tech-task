@@ -31,7 +31,7 @@ code.
 | [ADR-0012](adr/ADR-0012-frontend-architecture-and-design-system.md) | A React SPA with slice isolation over a token-first design system | accepted | 2026-09-08 |
 | [ADR-0013](adr/ADR-0013-authentication-and-security-baseline.md) | Magic-link authentication with a single-tenant session model, over a default-on security baseline | superseded | 2026-09-08 |
 | [ADR-0014](adr/ADR-0014-rating-aggregation-as-a-projection.md) | A product's rating aggregate is an outbox-driven projection, not authoritative state | accepted | 2026-09-08 |
-| [ADR-0015](adr/ADR-0015-specification-as-a-third-document-kind.md) | The application specification is a third document kind, machine-checked like the other two | proposed | 2026-09-09 |
+| [ADR-0015](adr/ADR-0015-specification-as-a-third-document-kind.md) | The application specification is a third document kind, machine-checked like the other two | accepted | 2026-09-09 |
 | [ADR-0016](adr/ADR-0016-database-naming-and-structure-with-slug-identity.md) | Database naming and structure conventions, with slug identity for catalogue rows | accepted | 2026-09-09 |
 | [ADR-0017](adr/ADR-0017-authentication-with-capability-flags.md) | Magic-link authentication with a single-tenant session model carrying capability flags, over a default-on security baseline | superseded | 2026-09-09 |
 | [ADR-0018](adr/ADR-0018-authentication-with-moderator-capability.md) | Magic-link authentication with a two-member capability set, over a default-on security baseline | accepted | 2026-09-09 |
@@ -40,10 +40,10 @@ code.
 
 | ID | Title | Status | Decisions |
 |---|---|---|---|
-| [SPEC-0001](spec/SPEC-0001-product-and-screens.md) | The product — actors, rules, journeys and screens | draft | ADR-0012, ADR-0014, ADR-0016, ADR-0018 |
-| [SPEC-0002](spec/SPEC-0002-data-model.md) | The data model — the reviews schema, its vocabularies and its projection | draft | ADR-0006, ADR-0014, ADR-0016, ADR-0018 |
-| [SPEC-0003](spec/SPEC-0003-api.md) | The API — contract namespaces, wire shapes, pagination and failure | draft | ADR-0004, ADR-0008, ADR-0016, ADR-0018 |
-| [SPEC-0004](spec/SPEC-0004-aggregation-and-events.md) | Aggregation and events — the outbox, the relay, and the rating projection | draft | ADR-0007, ADR-0009, ADR-0014, ADR-0018 |
+| [SPEC-0001](spec/SPEC-0001-product-and-screens.md) | The product — actors, rules, journeys and screens | accepted | ADR-0012, ADR-0014, ADR-0016, ADR-0018 |
+| [SPEC-0002](spec/SPEC-0002-data-model.md) | The data model — the reviews schema, its vocabularies and its projection | accepted | ADR-0006, ADR-0014, ADR-0016, ADR-0018 |
+| [SPEC-0003](spec/SPEC-0003-api.md) | The API — contract namespaces, wire shapes, pagination and failure | accepted | ADR-0004, ADR-0008, ADR-0016, ADR-0018 |
+| [SPEC-0004](spec/SPEC-0004-aggregation-and-events.md) | Aggregation and events — the outbox, the relay, and the rating projection | accepted | ADR-0007, ADR-0009, ADR-0014, ADR-0018 |
 
 ## Implementation tasks
 

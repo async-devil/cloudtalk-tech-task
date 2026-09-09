@@ -1,7 +1,7 @@
 ---
 id: ADR-0015
 title: The application specification is a third document kind, machine-checked like the other two
-status: proposed
+status: accepted
 supersedes: []
 date: 2026-09-09
 ---
