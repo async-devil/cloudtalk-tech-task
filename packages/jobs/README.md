@@ -13,6 +13,12 @@ domain data, only the generic mechanics every pipeline needs.
 `packages/example-context` is the living template that instantiates this spine end to
 end; this package's own suites prove the spine's primitives in isolation.
 
+**When NOT to use this.** A pipeline's own domain data, its business rules, or what a stage's
+payload MEANS never belongs here — the `PipelineTableContract` parameterization exists precisely so
+this package can stay ignorant of that. A new field, a new state, or a new stage's logic lives in
+the owning pipeline's own tables and composition, never as a special case inside
+`runPipelineStage`/`runPipelineBranch` themselves.
+
 ## Public contract
 
 ```ts
@@ -127,8 +133,8 @@ from the `@repo/entities` consts, and creates `jobs.dead_letter`. Runs after
   touched by retention. Test: `test/retention-validation.test.ts`.
 - **INV-10** — `computeOldestPendingAgeMs` is a pure function (`report math`): the backlog
   histogram's input is unit-testable without a database. Test: `test/outbox-report-math.test.ts`.
-- **INV-11** — the relay's contract, stated after the 2026-07-19 audit (/; ADR-0007
-  amendment note): `apply` runs **inside** the single claim transaction — a recorded
+- **INV-11** — the relay's contract, stated after the 2026-07-19 audit (ADR-0007 amendment note):
+  `apply` runs **inside** the single claim transaction — a recorded
   polling-publisher exception to the six-step shape's step-4 law (which governs the stage
   runners' billing calls, not the relay). Operating bound: the transaction is held for
   ~`batchSize × apply-latency`; tune `batchSize` down for slow consumers and keep a pass

@@ -9,6 +9,11 @@ other's routes, the objects exported here ARE the contract. This package current
 uniform error shape, the session bootstrap contract, and the two mail ports the auth module
 consumes; a new HTTP route or bus event adds its own contract/schema file here.
 
+**When NOT to use this.** A type or port belongs here only once a second module actually needs to
+see it. A shape two functions inside the SAME module share is not a contract — it stays local to
+that module until a real cross-module boundary needs it, or this package becomes a dumping ground
+for every interface someone thought might travel someday.
+
 ## Public contract
 
 - `appContract` / `emptyContract` — the composed oRPC router `apps/api` mounts and `apps/app`'s

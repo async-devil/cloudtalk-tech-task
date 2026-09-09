@@ -209,11 +209,13 @@ export type ExtractionMode = 'build-and-test' | 'build-only';
 
 /**
  * Reads a module's own extraction-mode declaration off its `package.json`: an `"extraction":
- * "build-only"` field, not a hardcoded name list. `styles` ships source rather than a build
- * (ADR-0001) and sets this field for exactly that reason — the exception is declared by the
- * module that has it, so a future source-shipping package opts in the same way instead of editing
- * this tool. Any other value, or the field's absence, means the ordinary `build-and-test` proof.
- * Exported for `src/selftest.ts`.
+ * "build-only"` field, not a hardcoded name list. No package.json in this repo sets it today —
+ * `styles` ships source rather than a build (ADR-0001) and would be the natural candidate, but it
+ * currently opts into `build-and-test` like every other liftable package. The field exists as the
+ * available opt-in seam for a module that genuinely needs it: whichever module has that shape
+ * declares it on itself, so a future source-shipping package opts in the same way instead of
+ * editing this tool. Any other value, or the field's absence, means the ordinary `build-and-test`
+ * proof. Exported for `src/selftest.ts`.
  */
 export function extractionModeOf(packageJson: { readonly extraction?: unknown }): ExtractionMode {
   return packageJson.extraction === 'build-only' ? 'build-only' : 'build-and-test';

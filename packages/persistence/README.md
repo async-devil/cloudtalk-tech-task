@@ -6,6 +6,12 @@ The Kysely data-access capability (ADR-0006): the pooled connection factory, the
 multi-folder migration runner, and the typed raw-row parse boundary. Modules receive `Kysely<DB>`
 handles by injection from a composition root — they never import this factory themselves.
 
+**When NOT to use this.** This package owns connecting to Postgres and parsing what comes back —
+never what a table means or when a row may be written. A domain rule ("a review needs a rating," "a
+session expires after N days") belongs in the module that owns that data, expressed as ordinary
+`Kysely` queries against the handle it was given; reaching into `packages/persistence` to add a
+domain-shaped helper here would give every other module's schema a reason to depend on this one.
+
 ## Public contract
 
 One barrel (`src/index.ts`):
@@ -70,18 +76,27 @@ order, so this bootstrap (`0001`) lands ahead of every schema that depends on it
   Test: `test/config-slice.test.ts`.
 - **INV-5**: `runMigrations` applies DDL only through a **dedicated single-connection owner
   handle** (never an app pool) under Kysely's built-in migration lock, so concurrent invocations
-  are safe. Pinned by the container-backed suite landing at; proven manually
-  against a scratch Postgres in the report until then.
+  are safe. `packages/persistence` ships no `test-integration/` directory, so this invariant has no
+  automated proof today — it is verified manually against a scratch Postgres instance.
 - **INV-6**: `0001-create-persistence-bootstrap.ts` creates `reference` and
   `persistence.set_updated_at()` exactly once, with no `IF NOT EXISTS` guard (ADR-0011) — a
   second creator anywhere else is a migration failure, not a silent no-op. Proven by
   `packages/jobs`' own Testcontainers suite, which runs this migration ahead of its own
   (the global index ordering).
 
+## Telemetry
+
+None. `packages/persistence` calls no `withSpan`, defines no counter or histogram, and imports no
+`@repo/observability` — every query this package runs executes inside whichever span the caller
+already opened (e.g. a `jobs` stage's own span wraps the `Kysely` calls it makes through this
+package's handle). Adding telemetry here would double-count work its callers already measure.
+Source record: [ADR-0009](../../docs/adr/ADR-0009-observability-through-a-facade.md) — the facade
+this package has nothing to report through.
+
 ## Extraction steps
 
 1. Copy `packages/persistence/` to the target repository.
 2. Vendor or re-add its two workspace deps (`@repo/kernel`, `@repo/config` — both liftable,
    kernel has zero deps) and `bun install`.
-3. `tsc` build and `vitest run` must pass standalone — the approximation of the
-   extract-module autonomy proof (full tool lands).
+3. `tsc` build and `vitest run` must pass standalone — `bun run extract-module persistence` runs
+   exactly these three steps and is the real proof, not an approximation of it.
