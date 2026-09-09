@@ -14,8 +14,10 @@ Postgres with full OpenTelemetry, plus a React SPA. Start with [README.md](READM
 
 1. Read [docs/README.md](docs/README.md) and find the task with `status: ready`.
 2. Read that task file in full.
-3. Read every record named in its `adr:` field, in full.
-4. Only then write code.
+3. Read the specifications in [`docs/spec/`](docs/spec/) that cover what it builds — they say what
+   the thing IS; the task only says when it is done (ADR-0015).
+4. Read every record named in its `adr:` field, in full.
+5. Only then write code.
 
 ## The laws you will actually touch
 
