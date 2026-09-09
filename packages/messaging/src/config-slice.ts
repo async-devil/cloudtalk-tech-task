@@ -17,6 +17,6 @@ export const configSlice = defineConfigSlice('messaging', () =>
   }),
 );
 
-/** The parsed output of {@link configSlice} (ADR-0003 §2a): the app composes its config shape
+/** The parsed output of {@link configSlice} (ADR-0003a): the app composes its config shape
  * from this exported type rather than restating the field list by hand. */
 export type MessagingSliceConfig = z.infer<ReturnType<typeof configSlice.schema>>;

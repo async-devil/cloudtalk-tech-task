@@ -262,7 +262,7 @@ export interface StageRunOptions<TResult> {
   readonly attemptsCeiling: number;
   /** Step 4 — the paid/external call. Runs OUTSIDE any transaction, and NOT AT ALL when a
    * write-ahead row already exists (the no-re-bill guarantee). Throwing here routes through
-   * `classifyRetry` (§6.3). */
+   * `classifyRetry`. */
   readonly performExternalCall: () => Promise<TResult>;
   /** Parses the write-ahead payload on replay (ADR-0004: a jsonb row is a boundary). */
   readonly resultSchema: z.ZodType<TResult>;

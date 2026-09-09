@@ -19,8 +19,8 @@ const obs = createModuleObservability('messaging');
 export const BUS_CHANNEL = 'bus:events:v1';
 
 /** The bus boundary's outcome vocabulary: `Completed`/`Terminal` only — no
- * `RetryScheduled`, the bus never retries (ADR-0003 §1 const-object source; not part of the
- * public barrel — the frozen surface map,, does not export it). Same literal values as
+ * `RetryScheduled`, the bus never retries (ADR-0003's const-object rule). Not part of the
+ * public barrel: it is internal to this boundary. Same literal values as
  * `@repo/messaging`'s `JOB_OUTCOME`, declared separately: a bus event handler outcome is not a
  * job outcome even where the strings coincide. */
 const EVENT_OUTCOME = {
@@ -57,7 +57,7 @@ function carrierFrom(envelope: TraceCarrier): TraceCarrier {
   return carrier;
 }
 
-/** ADR-0007 §6.3: the bus's own boundary — the messaging module's no-core-logging allowlist slot
+/** ADR-0007: the bus's own boundary — the messaging module's no-core-logging allowlist slot
  * reserved for `internal/bus*.ts`. `TEvent` is the caller's own closed bus-event vocabulary
  * (a `type`-discriminated union) — this module owns no concrete event, so every event union is
  * supplied by the caller at construction (the same `schema`-parameter shape `createWorker` already
@@ -67,7 +67,7 @@ export interface BestEffortEventBus<TEvent extends { readonly type: string }> {
   /**
    * AT-MOST-ONCE, no acks, no retries — by contract (ADR-0007; it's in the type name).
    * Auto-injects the active W3C trace context. NEVER throws and never rejects: a publish
-   * failure is logged once per interval (§6.4) and ticked on the publish counter — nothing
+   * failure is logged once per interval and ticked on the publish counter — nothing
    * state-critical may depend on delivery (usage law), so nothing may crash on non-delivery.
    */
   publish(event: TEvent): Promise<void>;

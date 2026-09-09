@@ -28,7 +28,7 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
-  # [AUD-23]: the logs pipeline's missing source. `prod.yml`/`dev.yml` mount the Docker json-file
+  # The logs pipeline's source. `dev.yml` mounts the Docker json-file
   # log directory read-only at this exact path; every container's stdout (postgres/redis/caddy
   # included, not just the api) lands here as one `*-json.log` file per container.
   filelog:
@@ -137,7 +137,7 @@ service:
       exporters: [otlphttp]
     # logs → backend exporter: the app's own OTLP-emitted logs (currently none — ADR-0009 ships
     # logs via stdout JSON, not OTLP, "initially") AND the filelog receiver's container-stdout
-    # capture ([AUD-23]) share this one pipeline/exporter.
+    # capture share this one pipeline and exporter.
     logs:
       receivers: [otlp, filelog]
       processors: [batch]

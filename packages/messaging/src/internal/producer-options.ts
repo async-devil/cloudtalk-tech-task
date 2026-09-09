@@ -4,14 +4,14 @@ import { jobIdFor } from '../job-id.js';
  * BullMQ's own API literal (not a value invented here): setting `backoff.type` to `'custom'`
  * directs BullMQ to call the worker's registered `settings.backoffStrategy` function instead of a
  * built-in (`fixed`/`exponential`) curve. The string is imposed by the pinned `bullmq` dependency
- * (registry table); see BullMQ's `BackoffOptions` typing. Named per ADR-0003 §4 — no magic string.
+ * (registry table); see BullMQ's `BackoffOptions` typing. Named per ADR-0003 — no magic string.
  */
 export const BACKOFF_TYPE_CUSTOM = 'custom';
 
 /**
  * How many completed jobs BullMQ retains per queue (`removeOnComplete.count`). Sized for a
  * post-mortem debugging window without letting completed-job hashes grow unbounded in Redis
- * memory. Named per ADR-0003 §4; if a future WI needs it tunable it becomes a messaging
+ * memory. Named per ADR-0003; if a future WI needs it tunable it becomes a messaging
  * config-slice key — until then a named constant with its rationale suffices.
  */
 export const COMPLETED_JOBS_RETAINED = 1000;

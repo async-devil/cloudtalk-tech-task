@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { computeTokenBucketRetryAfterMs } from '../src/internal/token-bucket-retry.js';
 
-describe('computeTokenBucketRetryAfterMs (spec §5 frozen formula)', () => {
+describe('computeTokenBucketRetryAfterMs (frozen formula)', () => {
   it('cost fits, returns 0', () => {
     expect(
       computeTokenBucketRetryAfterMs({

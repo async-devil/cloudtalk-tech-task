@@ -3,7 +3,7 @@
 ## Purpose
 
 The typed-port/wire-contract home (ADR-0001): cross-module ports live here, never as
-sibling-internal reaches. Contract-first law applies once a symbol ships (ADR-0002) — these
+sibling-internal reaches. Contract-first law applies once a symbol ships (ADR-0004) — these
 exports are the boundary between `apps/api` and the SPA (`apps/app`): neither restates the
 other's routes, the objects exported here ARE the contract. This package currently ships the
 uniform error shape, the session bootstrap contract, and the two mail ports the auth module
@@ -15,7 +15,7 @@ consumes; a new HTTP route or bus event adds its own contract/schema file here.
   client is typed from, and a placeholder empty router for a composition root with no route to
   mount yet.
 - `apiErrorShape` / `ApiErrorShape` — the uniform `{ code, message, details? }` wire error
-  (ADR-0002/ADR-0004).
+  (ADR-0008 defines the codes, ADR-0004 the boundary that renders them).
 - `sessionContract` / `sessionBootstrapSchema` / `SessionBootstrap` — the SPA's session bootstrap
   route and payload.
 - `MailRendererPort`, `MailSenderPort`, and their supporting types (`MAIL_TEMPLATE`,

@@ -1,5 +1,5 @@
-// Public barrel — the module's entire public contract (ADR-0002: one barrel, no nested barrels).
-// `@repo/entities` holds only domain entity/vocabulary declarations (ADR-0002): never wire-shape,
+// Public barrel — the module's entire public contract (ADR-0003: one barrel, no nested barrels).
+// `@repo/entities` holds only domain entity/vocabulary declarations (ADR-0003): never wire-shape,
 // never parsing behavior, never a grab-bag of unrelated domains.
 export {
   BRANCH_KIND,

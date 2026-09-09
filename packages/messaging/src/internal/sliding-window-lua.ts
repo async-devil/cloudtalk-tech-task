@@ -1,5 +1,5 @@
 /**
- * The sliding-window Lua script (wi-11 security-baseline, frozen semantics): one `EVAL`
+ * The sliding-window Lua script: one `EVAL`
  * per `tryAcquire` — atomic, the same token-bucket discipline (`token-bucket-lua.ts`).
  * State is one Redis ZSET per subject key, scored by `redis.call('TIME')`-derived milliseconds.
  * Per acquire: prune members scored older than `windowMs` (`ZREMRANGEBYSCORE`), count what

@@ -12,7 +12,7 @@ describe('fullJitterBackoff', () => {
     }
   });
 
-  it('stays within `0 <= v <= min(cap, base*2**attempt)` (spec §7 named invariant)', () => {
+  it('stays within `0 <= v <= min(cap, base*2**attempt)` (named invariant)', () => {
     for (let attempt = 0; attempt < 10; attempt += 1) {
       const expectedCap = Math.min(options.capMs, options.baseMs * 2 ** attempt);
       for (let sample = 0; sample < 50; sample += 1) {

@@ -145,7 +145,7 @@ type ClaimBranchResult =
 
 /** `runPipelineStage`'s claim step, for one branch: advisory lock -> read `branch_status_id` ->
  * already-`Completed` ⇒ `ReplayNoOp`, already-`Failed` ⇒ `AlreadyFailed`, else `attempts += 1`
- * regression-guarded on `Pending`; ceiling ⇒ dead-letter (closes the branch and its siblings, §6)
+ * regression-guarded on `Pending`; ceiling ⇒ dead-letter (closes the branch and its siblings)
  * then throw. @internal `runPipelineBranch` is the only public surface for this step (
  * exports only `registerBranches`/`runPipelineBranch`/`completeBranch`/`failBranch`). */
 async function claimBranch(
@@ -286,7 +286,7 @@ export interface BranchRunOptions<TResult> {
 
 /** `runPipelineStage`'s shape for one OWNED branch: claim = `attempts++` under the
  * advisory lock with the pending-guard (already-terminal ⇒ `ReplayNoOp`/`AlreadyFailed`),
- * write-ahead token `'{stage}:{branchKey}'`, ceiling ⇒ dead-letter (§6). Returns the stage-run
+ * write-ahead token `'{stage}:{branchKey}'`, ceiling ⇒ dead-letter. Returns the stage-run
  * outcome; the join decision is delivered via `onJoinCompleted`. */
 export async function runPipelineBranch<TResult>(
   options: BranchRunOptions<TResult>,

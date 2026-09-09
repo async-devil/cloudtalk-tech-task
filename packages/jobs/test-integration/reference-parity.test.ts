@@ -5,12 +5,12 @@ import { type JobsTestInfra, startJobsTestInfra } from './harness/postgres-conta
 
 /**
  * A lightweight parity check on THIS package's own migration (`migrations/0002-create-jobs-spine.ts`)
- * — not the full ADR-0011 §5 parity proof (proof 7), which is
+ * — not the full ADR-0011 parity proof (proof 7), which is
  * `packages/example-context/test-integration/`'s job since it must also cover the
  * example pipeline's own tables. This proves jobs' migration seeded exactly what
  * `@repo/entities` declares, so a spine bug never hides behind an untested seed statement.
  */
-describe('reference vocabulary seed matches @repo/entities (spec §11 proof 7, jobs-migration scope)', () => {
+describe('reference vocabulary seed matches @repo/entities (proof 7, jobs-migration scope)', () => {
   let infra: JobsTestInfra;
 
   beforeAll(async () => {

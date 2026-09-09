@@ -124,7 +124,7 @@ function testBus(): ReturnType<typeof createBestEffortEventBus<TestEvent>> {
   });
 }
 
-describe('BestEffortEventBus.publish (spec §6.2/§6.4): never rejects', () => {
+describe('BestEffortEventBus.publish: never rejects', () => {
   it('Redis down: resolves; warns once per interval carrying suppressedCount', async () => {
     await withFakeBun(async () => {
       const bus = testBus();
@@ -150,7 +150,7 @@ describe('BestEffortEventBus.publish (spec §6.2/§6.4): never rejects', () => {
   });
 });
 
-describe('BestEffortEventBus consume boundary (spec §6.3)', () => {
+describe('BestEffortEventBus consume boundary', () => {
   it('invalid JSON payload is swallowed via failSpan (no throw, one terminal log)', async () => {
     await withFakeBun(async () => {
       const bus = testBus();

@@ -23,12 +23,11 @@ export interface QueueOptions<TData> {
   readonly backoff?: BackoffOptions;
 }
 
-/** Handle returned by {@link createQueue} (frozen; `remove` is an *additive
- * amendment* — `` §2 — nothing else in this shape changes). */
+/** Handle returned by {@link createQueue}. */
 export interface Enqueuer<TData> {
   /** `jobId = ${stage}_${entityId}`. */
   enqueue(entityId: string, data: TData): Promise<void>;
-  /** Queue-level GLOBAL pause (ADR-0007 §3): state lives in Redis, so every worker on this
+  /** Queue-level GLOBAL pause (ADR-0007): state lives in Redis, so every worker on this
    * stage — not just this process — stops pulling new jobs; in-flight jobs finish. */
   pause(): Promise<void>;
   resume(): Promise<void>;

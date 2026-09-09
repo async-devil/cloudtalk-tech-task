@@ -4,14 +4,14 @@ import type { ErrorCode } from './error-code.js';
 
 /** Options accepted by every {@link AppError} constructor. */
 export interface AppErrorOptions {
-  /** Safe-for-wire structured context; never internals (ADR-0004). */
+  /** Safe-for-wire structured context; never internals (ADR-0008). */
   readonly details?: JsonObject;
   /** ES2022 cause chaining. */
   readonly cause?: unknown;
 }
 
 /**
- * Base of the kernel error taxonomy (ADR-0004). Every subclass fixes its own `code`,
+ * Base of the kernel error taxonomy (ADR-0008). Every subclass fixes its own `code`,
  * `httpStatus`, and `retryable` at the definition site — retryability is a property of the
  * type, never inferred by matching on `name`/`message`. Errors crossing a port are part of that
  * port's contract (declared in TSDoc) and are detected via {@link isAppError} (instanceof, with a

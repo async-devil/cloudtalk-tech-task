@@ -13,7 +13,7 @@ function nonEmptyTrimmed(value: string): string | undefined {
  *
  * 1. An `Error` with a non-empty trimmed `message` -> the message.
  * 2. An `Error` whose `name` is non-empty AND not the constructor default `'Error'` -> the name.
- * (Deviation from a literal reading of ADR-0004: every `Error` has `name === 'Error'` by
+ * (Deviation from a literal reading of ADR-0008: every `Error` has `name === 'Error'` by
  * default, so taking the default name would make step 3 unreachable and erase cause
  * information — honoring the chain's intent requires skipping the information-free default.)
  * 3. A non-nullish `cause` -> recurse on the cause, depth-capped at {@link MAX_CAUSE_DEPTH} (a

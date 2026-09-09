@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { workerLimiterOptions } from '../src/internal/worker-limiter.js';
 
-describe('workerLimiterOptions (ADR-0014 §3, spec §3 frozen mapping)', () => {
+describe('workerLimiterOptions (ADR-0014, frozen mapping)', () => {
   it("maps { max, durationMs } to BullMQ's { max, duration }", () => {
     expect(workerLimiterOptions({ max: 10, durationMs: 1000 })).toStrictEqual({
       max: 10,

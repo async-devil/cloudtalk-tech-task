@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { jobIdFor } from '../src/index.js';
 
 describe('jobIdFor', () => {
-  it('is "stage_entityId" (spec §7 named invariant)', () => {
+  it('is "stage_entityId" (named invariant)', () => {
     expect(jobIdFor('uppercase-note', 'abc-123')).toBe('uppercase-note_abc-123');
   });
 

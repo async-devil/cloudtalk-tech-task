@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { rpmLimiterOptions } from '../src/internal/rpm-limiter-options.js';
 import { computeTokenBucketRefill } from '../src/rate-limiter.js';
 
-describe('computeTokenBucketRefill (spec §5 frozen formula)', () => {
+describe('computeTokenBucketRefill (frozen formula)', () => {
   it('caps refill at capacity', () => {
     expect(
       computeTokenBucketRefill({ tokens: 9, capacity: 10, refillPerSecond: 5, elapsedMs: 5000 }),
@@ -55,7 +55,7 @@ describe('computeTokenBucketRefill (spec §5 frozen formula)', () => {
   });
 });
 
-describe('rpmLimiterOptions (spec §5 requests-per-minute -> bucket parameter mapping)', () => {
+describe('rpmLimiterOptions (requests-per-minute -> bucket parameter mapping)', () => {
   it('capacity = requestsPerMinute, refillPerSecond = requestsPerMinute / 60', () => {
     expect(rpmLimiterOptions(120)).toStrictEqual({ capacity: 120, refillPerSecond: 2 });
   });

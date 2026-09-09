@@ -8,8 +8,7 @@ handles by injection from a composition root — they never import this factory 
 
 ## Public contract
 
-One barrel (`src/index.ts`), per
-[](../../) §6:
+One barrel (`src/index.ts`):
 
 - `createDb<DB>(options: DbOptions): Kysely<DB>` / `destroyDb(db)` — pg `Pool` +
   `PostgresDialect`; pool size defaults to 10.
@@ -29,15 +28,15 @@ declaration against Kysely's structural `PostgresPool` contract (`src/ambient.d.
 
 ## Migrations folder
 
-`migrations/` is reserved for genuine shared bootstrap DDL (ADR-0006) — deliberately empty at
- (the demo table belonged to `apps/api`), and since ADR-0011/ holds its
-first resident: `0001-create-persistence-bootstrap.ts`, global migration index `0001` (ADR-0011
-§12.1's numbering correction — a module's first migration is numbered by dependency order across
-the whole workspace, not by being that module's first). It creates `CREATE SCHEMA persistence`,
+`migrations/` is THE migration folder: one global index sequence for the whole workspace
+(ADR-0006), because per-module folders make ordering across modules a matter of luck. Its first
+resident is `0001-create-persistence-bootstrap.ts` at global index `0001` — a module's first
+migration is numbered by dependency order across the workspace, not by being that module's first.
+It creates `CREATE SCHEMA persistence`,
 `CREATE SCHEMA reference` (owned by no single module — every context's closed vocabularies are
-seeded into it, ADR-0011 §5), and `persistence.set_updated_at()`, the shared `BEFORE UPDATE`
-trigger function ADR-0011 §8 mandates for every row-level `updated_at` column. Since the 2026-07-24
-consolidation every migration in the repo lives in this one folder, applied in global filename
+seeded into it, ADR-0011), and `persistence.set_updated_at()`, the shared `BEFORE UPDATE`
+trigger function ADR-0011 mandates for every row-level `updated_at` column. Every migration in the
+repository lives in this one folder, applied in global filename
 order, so this bootstrap (`0001`) lands ahead of every schema that depends on it — e.g.
 `0002-create-jobs-spine.ts` seeds its vocabularies into `reference`.
 
@@ -71,10 +70,10 @@ order, so this bootstrap (`0001`) lands ahead of every schema that depends on it
   are safe. Pinned by the container-backed suite landing at; proven manually
   against a scratch Postgres in the report until then.
 - **INV-6**: `0001-create-persistence-bootstrap.ts` creates `reference` and
-  `persistence.set_updated_at()` exactly once, with no `IF NOT EXISTS` guard (ADR-0011 §12) — a
+  `persistence.set_updated_at()` exactly once, with no `IF NOT EXISTS` guard (ADR-0011) — a
   second creator anywhere else is a migration failure, not a silent no-op. Proven by
   `packages/jobs`' own Testcontainers suite, which runs this migration ahead of its own
-  (`` §12.1's index ordering).
+  (the global index ordering).
 
 ## Extraction steps
 

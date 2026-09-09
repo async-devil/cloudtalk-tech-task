@@ -16,7 +16,7 @@ export interface RenderedMailBody {
 /**
  * The closed set of mail templates a `MailRendererPort` implementation must recognize. Adding a
  * template means adding a member here, its component in the renderer implementation, and a
- * subject line there — never a bare string scattered at call sites (ADR-0002).
+ * subject line there — never a bare string scattered at call sites (ADR-0003).
  */
 export const MAIL_TEMPLATE = {
   MagicLink: 'magic-link',

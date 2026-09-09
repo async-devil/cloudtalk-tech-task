@@ -12,7 +12,7 @@ export const APP_ERROR_BRAND = 'AppError';
  * e.g. an instance built from a different copy of the `AppError` class (a duplicated
  * `@repo/kernel` in the dependency graph, or a hand-authored lookalike in a test). Checking
  * `brand` plus the fixed fields (never `name`/`message`) is what makes detection survive that
- * case, per ADR-0004's "detected by instanceof/brand — never by name/message matching". */
+ * case, per ADR-0008's "detected by instanceof/brand — never by name/message matching". */
 export function hasAppErrorShape(value: unknown): value is {
   readonly brand: 'AppError';
   readonly code: ErrorCode;

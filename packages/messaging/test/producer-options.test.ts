@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { producerJobOptions } from '../src/internal/producer-options.js';
 
 describe('producerJobOptions', () => {
-  it('matches the frozen producer defaults shape (spec §7)', () => {
+  it('matches the frozen producer defaults shape', () => {
     expect(producerJobOptions('uppercase-note', 'note-1', 5)).toStrictEqual({
       jobId: 'uppercase-note_note-1',
       attempts: 5,

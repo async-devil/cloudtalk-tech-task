@@ -20,7 +20,7 @@ const obs = createModuleObservability('jobs');
 
 /**
  * The outbox relay row outcome vocabulary, as a const-object value set
- * (docs/adr/0042-wi01-review-source-of-truth-and-layout.md §1).
+ * (ADR-0003).
  */
 export const OUTBOX_ROW_OUTCOME = {
   Processed: 'processed',
@@ -148,7 +148,7 @@ export interface OutboxRelayReport {
 }
 
 /** ms age of `oldestCreatedAt` relative to `now` — extracted as a pure function ("report math",
- * 's unit-test scope) so the §9 backlog histogram's input is directly unit-testable
+ * 's unit-test scope) so the backlog histogram's input is directly unit-testable
  * without a database. */
 export function computeOldestPendingAgeMs(oldestCreatedAt: Date, now: Date): number {
   return Math.max(0, now.getTime() - oldestCreatedAt.getTime());
@@ -156,7 +156,7 @@ export function computeOldestPendingAgeMs(oldestCreatedAt: Date, now: Date): num
 
 /**
  * ONE transaction per pass (ADR-0007, frozen mechanics — the claim and the marks speak the
- * ADR-0011 §7.1 vocabulary): `SELECT ... WHERE outbox_row_status_id = Pending ORDER BY outbox_id
+ * ADR-0011 vocabulary): `SELECT ... WHERE outbox_row_status_id = Pending ORDER BY outbox_id
  * FOR UPDATE SKIP LOCKED LIMIT batchSize`, then per row an isolated `try/catch` around `apply`:
  * success ⇒ `Processed` + `processed_at = now()`; throw ⇒ `attempts++`, `last_error`, and `Dead`
  * once `attempts >= maxAttempts` (one `warn` log per newly-parked row). The single commit lands

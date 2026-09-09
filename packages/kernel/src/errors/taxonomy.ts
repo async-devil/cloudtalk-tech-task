@@ -1,7 +1,7 @@
 import { AppError, type AppErrorOptions } from './app-error.js';
 import { ERROR_CODE, type ErrorCode } from './error-code.js';
 
-// Each subclass fixes its `code` from the ERROR_CODE const value set (ADR-0002) — no scattered
+// Each subclass fixes its `code` from the ERROR_CODE const value set (ADR-0003) — no scattered
 // string literals; the taxonomy and the wire shape both derive from that one source.
 
 /** 400 — input failed validation. Never retryable: the caller must change the input first. */
@@ -48,7 +48,7 @@ export class RateLimitedError extends AppError {
 
 /**
  * Options for {@link ProviderError} and {@link InternalError}: retryability is set at the throw
- * site (ADR-0004) — e.g. a provider 503 may be constructed retryable, a provider 402 must not be.
+ * site (ADR-0008) — e.g. a provider 503 may be constructed retryable, a provider 402 must not be.
  * Defaults to `false` (terminal) when omitted.
  */
 export interface RetryableErrorOptions extends AppErrorOptions {
@@ -91,10 +91,10 @@ export class InternalError extends AppError {
  * 503 — the provider is temporarily unreachable/overloaded. Always retryable: this subtype
  * EXISTS to mark the transient case at the throw site (ADR-0003), where plain {@link ProviderError}
  * defaults terminal. `code` stays `ERROR_CODE.Provider` (the wire vocabulary does not grow,
- * ADR-0004): a 5xx consumer cares that the provider failed, not which transiency subclass.
+ * ADR-0008): a 5xx consumer cares that the provider failed, not which transiency subclass.
  * `retryable` is fixed `true` — the constructor accepts no override (a caller who wants a
  * terminal provider failure throws {@link ProviderError} instead). The subclass set is closed at
- * nine; a new subtype requires re-opening ADR-0004.
+ * nine; a new subtype requires re-opening ADR-0008.
  */
 export class ProviderUnavailableError extends ProviderError {
   override readonly httpStatus: number = 503;

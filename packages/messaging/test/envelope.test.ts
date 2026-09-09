@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildEnvelope } from '../src/internal/envelope.js';
 
 describe('buildEnvelope', () => {
-  it('carries the trace carrier fields alongside data (spec §7 frozen envelope shape)', () => {
+  it('carries the trace carrier fields alongside data (frozen envelope shape)', () => {
     expect(buildEnvelope({ noteId: 'n1' }, { traceparent: 'tp', tracestate: 'ts' })).toStrictEqual({
       traceparent: 'tp',
       tracestate: 'ts',

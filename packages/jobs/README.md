@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The generic durability spine (``, ADR-0007):
+The generic durability spine (ADR-0007):
 ADR-0007's six-step idempotent worker shape composed as `runPipelineStage`/`runPipelineBranch`,
 transactional-outbox helpers with per-row error isolation and parking (ADR-0007), a reconciler
 that recovers stuck work from Postgres truth with a uniform attempts ceiling (ADR-0007), and the
@@ -48,9 +48,6 @@ JOIN_DECISION: { CompletedNow; Pending };
 RECONCILE_ACTION: { Redriven; Healed; DeadLettered };
 ```
 
-See `` §3–§9 for the frozen shapes and SQL templates every
-signature above instantiates verbatim.
-
 ## Dependencies
 
 `kysely@0.29.3`, `zod@4.4.3` (registry table) + workspace `@repo/kernel` (errors), `@repo/entities`
@@ -63,7 +60,7 @@ handle, Redis/BullMQ only through `@repo/messaging`.
 
 ## Migrations folder
 
-`migrations/0002-create-jobs-spine.ts` — global migration index `2` (ADR-0011 §12.1's numbering
+`migrations/0002-create-jobs-spine.ts` — global migration index `2` (ADR-0011's numbering
 correction: a module's first migration is numbered by its place in the whole workspace's
 dependency order, not by being that module's first). Creates schema `jobs`, seeds the four
 `reference` vocabularies (`stage_status`, `branch_status`, `branch_kind`, `outbox_row_status`)
@@ -97,7 +94,7 @@ from the `@repo/entities` consts, and creates `jobs.dead_letter`. Runs after
 - **INV-5** — `writeDeadLetter` is ONE transaction: insert the dead-letter row (`ON CONFLICT DO
   NOTHING`, replay-safe), set `{stage}_stage_status_id = Failed`, and close every still-`Pending`
   branch of `(instance, stage)` as `Failed` with the same (truncated) reason. `payload` carries
-  identifiers/classification only, never content (ADR-0006 §4); `reason`/`last_error` are
+  identifiers/classification only, never content (ADR-0006); `reason`/`last_error` are
   truncated to `REASON_MAX_LENGTH` (500) characters. Test: `test-integration/dead-letter.test.ts`.
 - **INV-6** — the uniform attempts ceiling has no exceptions: a stage, an OWNED branch, and a
   DELEGATED branch (aged by the reconciler, never redriven — no queue job exists for it) all
@@ -113,10 +110,10 @@ from the `@repo/entities` consts, and creates `jobs.dead_letter`. Runs after
   (`Enqueuer.remove` then re-`enqueue`, dedup-safe by the state-check inside `claimStage`); stale
   delegated branches are only aged. Test: `test-integration/reconciler.test.ts`.
 - **INV-9** — `purgePipelineData`/`startRetention` throw kernel `ValidationError` BEFORE touching
-  the database when any retention horizon is `<= staleAfterMs` (ADR-0006 §2's floor — a purge
+  the database when any retention horizon is `<= staleAfterMs` (ADR-0006's floor — a purge
   inside the in-flight window would re-bill the provider); `Pending` outbox rows are never
   touched by retention. Test: `test/retention-validation.test.ts`.
-- **INV-10** — `computeOldestPendingAgeMs` is a pure function (`report math`): the §9 backlog
+- **INV-10** — `computeOldestPendingAgeMs` is a pure function (`report math`): the backlog
   histogram's input is unit-testable without a database. Test: `test/outbox-report-math.test.ts`.
 - **INV-11** — the relay's contract, stated after the 2026-07-19 audit (/; ADR-0007
   amendment note): `apply` runs **inside** the single claim transaction — a recorded
@@ -144,8 +141,6 @@ from the `@repo/entities` consts, and creates `jobs.dead_letter`. Runs after
 <!-- Every emitted span/instrument maps to a line here; the telemetry-map gate enforces both
      directions (against src/ and against the source spec linked below). -->
 
-Source spec: [wi-04](../../).
-
 **Spans:** none. The spine's units of work run under spans opened elsewhere — worker stages under
 messaging's runtime-named `jobs.{pipeline}.{stage}` spans, relay/reconciler passes under their
 schedulers — and the spine adds no per-stage span of its own (one span per unit of work,
@@ -162,7 +157,7 @@ ADR-0009).
 | `jobs.reconciler.action` | counter | Stage, Outcome | `redriven` / `healed` / `dead_lettered` |
 | `jobs.retention.run` | counter | Queue | one tick per retention pass, even empty; Queue = pipeline (ADR-0006) |
 | `jobs.retention.purged` | counter | Queue, Outcome | one add per target with the rows deleted: `stage_result` / `outbox_processed` / `outbox_dead` / `dead_letter` (ADR-0006) |
-| `jobs.dead-letter.write` | counter | Stage | every dead-letter row, whatever path wrote it. (amends [wi-04](../../), 2026-07-24: the frozen spec spells this `jobs.dead_letter.write`, which `assertModuleName` rejects — ADR-0008 segment charset is `[a-z0-9-]`, so the underscore throws `ValidationError` at `createCounter` time. Dashed, matching `toSegment`'s own choice; see `src/dead-letter.ts`) |
+| `jobs.dead-letter.write` | counter | Stage | every dead-letter row, whatever path wrote it. Dashed rather than `jobs.dead_letter.write`: ADR-0009's segment charset is `[a-z0-9-]`, so an underscore throws at `createCounter` time — see `src/dead-letter.ts` |
 
 No instance ids on metrics, ever — ids live on spans and logs (ADR-0009 cardinality budget).
 
