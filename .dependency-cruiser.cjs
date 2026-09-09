@@ -70,7 +70,11 @@ function moduleSourceForm(name) {
   return `^${folder}/${escapeRegExp(name)}/`;
 }
 function moduleNodeModulesForm(name) {
-  return `^node_modules/@repo/${escapeRegExp(name)}(?:/|$)`;
+  // `(^|/)`, not `^`. Bun installs into a content-addressed store, so a workspace package can
+  // realpath to `node_modules/.bun/<pkg>@<ver>/node_modules/@repo/<name>/…` and a start-anchored
+  // pattern would silently never match it — the rule would evaluate to nothing exactly once the
+  // dependency is installed, which is the only state that matters.
+  return `(^|/)node_modules/@repo/${escapeRegExp(name)}(?:/|$)`;
 }
 function moduleBareSpecifierForm(name) {
   return `^@repo/${escapeRegExp(name)}(?:/|$)`;
@@ -156,7 +160,7 @@ const noCrossModuleInternalsRule = {
   to: {
     path: [
       '^(?:apps|packages|tools)/[^/]+/src/', // form 1: another module's real source tree
-      '^node_modules/@repo/[^/]+/', // form 2: another module's node_modules symlink tree
+      '(^|/)node_modules/@repo/[^/]+/', // form 2: another module's node_modules tree
       '^@repo/[^/]+/', // form 3: bare specifier WITH a subpath (a deep import)
     ],
     pathNot: [
@@ -167,12 +171,12 @@ const noCrossModuleInternalsRule = {
       ...SANCTIONED_SUBPATH_ENTRIES.flatMap(({ module, subpath }) => [
         `^@repo/${module}/${subpath}$`,
         `^packages/${module}/(?:src|dist)/${subpath}\\.(?:ts|js|mjs|cjs|d\\.ts)$`,
-        `^node_modules/@repo/${module}/(?:src|dist)/${subpath}\\.(?:ts|js|mjs|cjs|d\\.ts)$`,
+        `(^|/)node_modules/@repo/${module}/(?:src|dist)/${subpath}\\.(?:ts|js|mjs|cjs|d\\.ts)$`,
         // Extension-carrying subpaths such as `styles/styles.css` — a non-JS asset entry, which
         // `tsc` neither reads nor emits, so the two forms above can never match it. Harmless for
         // extensionless entries like `observability/sdk`: no resolver reports that path shape.
         `^packages/${module}/(?:src|dist)/${subpath}$`,
-        `^node_modules/@repo/${module}/(?:src|dist)/${subpath}$`,
+        `(^|/)node_modules/@repo/${module}/(?:src|dist)/${subpath}$`,
       ]),
     ],
   },
@@ -227,7 +231,13 @@ const adaptersAndSdkOnlyInRuntimeRules = SDK_OWNERS.map(
   }) => {
     const escaped = escapeRegExp(sdk);
     const bareForm = prefixMatch ? `^${escaped}` : `^${escaped}(?:/|$)`;
-    const nodeModulesForm = `^node_modules/${escaped}`;
+    // `(^|/)node_modules/`, never `^node_modules/`. Bun's content-addressed store resolves an
+    // installed package to `node_modules/.bun/<pkg>@<ver>/node_modules/<pkg>/…`, so a
+    // start-anchored pattern matches nothing the moment the SDK is actually installed — the rule
+    // stays green by never firing, which is the hollow-gate shape this repository exists to
+    // refuse. Measured against a fixture, not reasoned: with `^`, a `bullmq` import from
+    // `packages/jobs` cruised clean.
+    const nodeModulesForm = `(^|/)node_modules/${escaped}`;
     return {
       name: 'adapters-and-sdk-only-in-runtime',
       severity: 'error',
@@ -260,7 +270,7 @@ const observabilitySdkEntryRule = {
     path: [
       '^@repo/observability/sdk$',
       '^packages/observability/(src|dist)/sdk',
-      '^node_modules/@repo/observability/(src|dist)/sdk',
+      '(^|/)node_modules/@repo/observability/(src|dist)/sdk',
     ],
   },
 };

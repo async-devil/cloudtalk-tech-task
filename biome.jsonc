@@ -142,7 +142,13 @@
     {
       // Rule-test fixtures are deliberate boundary VIOLATIONS (dep-cruiser test data);
       // linting them defeats their purpose. Formatter still applies.
-      "includes": ["tools/arch-checks/test/fixtures/**"],
+      "includes": [
+        "tools/arch-checks/test/fixtures/**",
+        // The extraction proof's fixture declares an import it deliberately does NOT list in its
+        // package.json — that undeclared import IS the fixture. Linting it would report the very
+        // condition the fixture exists to reproduce.
+        "tools/extract-module/test/fixtures/**"
+      ],
       "linter": {
         "enabled": false
       }
