@@ -1,0 +1,14 @@
+/**
+ * The app's Tailwind entry.
+ *
+ * `@source` is not optional: Tailwind v4 scans the project root it is invoked from, and every
+ * class string this app renders actually lives in `@repo/styles`' CVA variant definitions. Without
+ * these lines the primitives render with class names Tailwind never generated CSS for — the page
+ * looks unstyled and nothing fails (the registry's `class-variance-authority` row spells out the
+ * same trap).
+ */
+@import "tailwindcss";
+@import "@repo/styles/styles.css";
+
+@source "../../../packages/styles/src";
+@source "./";
