@@ -198,9 +198,11 @@ machinery is paid for at all:
 
 ## Open questions
 
-1. **TASK-0005's reconciler criterion** assumes the stage pipeline. This specification delivers the
-   same guarantee through the relay's pending scan and says so. Either the task's wording is amended
-   or a stage pipeline is introduced for a workload that has no stages; the first is proposed.
+1. **TASK-0005's reconciler criterion** assumed the stage pipeline. Resolved: the task's flushed-
+   Redis criterion is amended (TASK-0005, both its Scope and that criterion's wording) to describe
+   the guarantee this pipeline actually delivers — the relay's own pending-row scan, with no
+   reconciler registered for it — rather than introducing a stage pipeline for a workload that has
+   none.
 2. **Erasure and product deletion** leave the projection stale until something recomputes (SPEC-0002
    open question 1). Proposal: both emit the same `rating.recompute` event before their cascade.
 3. **Relay interval.** Not fixed here — it is the staleness budget in milliseconds, and it belongs
