@@ -1,0 +1,11 @@
+{
+  "name": "undeclared-import-fixture-root",
+  "private": true,
+  "//": "Fixture repo root for src/selftest.ts's end-to-end proof: a real extractModule() run against fixture-consumer, which imports fixture-dep without declaring it as a workspace:* dependency. The typescript pin below only needs to be an installable version — it does not need to track the real repo's pin.",
+  "workspaces": [
+    "packages/*"
+  ],
+  "devDependencies": {
+    "typescript": "5.7.3"
+  }
+}
