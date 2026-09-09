@@ -51,6 +51,11 @@ the payload would be a second, staler copy of what the worker is about to read, 
 disagreed the projection would take the payload's word for it. Submission, edit and deletion all emit
 the identical event: the aggregate does not care what changed, only which product changed.
 
+**Creating a product emits nothing.** There is no review to aggregate, so no recomputation is owed
+and no `product_rating` row exists — which is why every catalogue read joins the projection `LEFT`
+(SPEC-0002). Inserting a zero row at creation to avoid the null would be a projection claiming a
+`computed_at` for a computation that never ran, and the UI would display that claim faithfully.
+
 Deletion emits before its cascade takes effect, in the same transaction — the recomputation reads
 whatever the committed state is, which is the point of recomputing rather than adjusting.
 
@@ -208,3 +213,4 @@ machinery is paid for at all:
 | Spans, counters, the lag histogram, cardinality | ADR-0009 | TASK-0005 |
 | Durability tests against real containers | ADR-0010 | TASK-0005 |
 | Staleness the UI displays | ADR-0014 | TASK-0004 |
+| No event on product creation; the `LEFT JOIN` that follows | ADR-0014 | TASK-0008 |

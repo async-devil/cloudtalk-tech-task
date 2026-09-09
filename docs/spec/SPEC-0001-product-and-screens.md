@@ -3,7 +3,7 @@ id: SPEC-0001
 title: The product — actors, rules, journeys and screens
 status: draft
 supersedes: []
-adr: [ADR-0012, ADR-0013, ADR-0014]
+adr: [ADR-0012, ADR-0014, ADR-0016, ADR-0017]
 date: 2026-09-09
 ---
 
@@ -16,7 +16,7 @@ document defines it: what a person can do, what the system refuses, and what eac
 it is loading, empty, failing, or signed out.
 
 What already exists and is not re-specified here: magic-link sign-in and the session model
-(ADR-0013, `packages/auth`), the SPA shell, its router, guards and the sign-in screen
+(ADR-0017, `packages/auth`), the SPA shell, its router, guards and the sign-in screen
 (`apps/app/src/features/sign-in/`), and the design tokens and primitives in `packages/styles`.
 
 The scope is the brief's, plus the seams for what comes after. A review site's full surface —
@@ -30,7 +30,12 @@ Specification with the seam each would use, and is deliberately not built.
 | Actor | How the system knows them | What they may do |
 |---|---|---|
 | Visitor | No session cookie | Browse the catalogue, open a product, read reviews |
-| Reviewer | A resolved session (ADR-0013) | Everything a visitor may do, plus submit, edit and delete **their own** review |
+| Reviewer | A resolved session (ADR-0017) | Everything a visitor may do, plus submit, edit and delete **their own** review |
+| Catalogue manager | A session whose user holds `catalogue_manager` | Everything a reviewer may do, plus create and edit catalogue products |
+
+The catalogue manager is a capability on a reviewer, not a separate kind of account: the same person
+writes reviews. There is no admin area — the authoring actions live on the catalogue and product
+screens where the products are, and the capability decides whether they render.
 
 There is no moderator actor in v1. A review carries a moderation state
 (`reference.review_moderation_state`, SPEC-0002) and nothing can change it: the state exists so the
@@ -39,8 +44,10 @@ migration and a rewritten query. A role column on `auth.app_user` is the seam.
 
 ### Domain objects
 
-- **Product** — a catalogue item: name, description, category, price. Identified publicly by a
-  `prd_…` token. Created by seed data (TASK-0006); there is no product-authoring surface in v1.
+- **Product** — a catalogue item: name, description, category, price. **Addressed by its `slug`**
+  (`/products/sony-wh-1000xm5`) and carrying a **`sku`**, the identifier the business already uses
+  (`AUD-WH1000XM5`). Both are unique and neither changes after creation (ADR-0016). Created by a
+  catalogue manager in the app, and seeded for a fresh checkout (TASK-0006).
 - **Review** — one reviewer's rating (1–5) with a title and a body, attached to one product.
   Identified publicly by a `rev_…` token.
 - **Rating aggregate** — a product's average rating and review count, with the time it was computed.
@@ -54,17 +61,21 @@ migration and a rewritten query. A role column on `auth.app_user` is the seam.
 1. A rating is an integer from 1 to 5. There are no half-stars and no unrated reviews.
 2. One review per author per product. A second submission is refused (`CONFLICT`), not merged into
    the first, not silently updated.
-3. An author may edit or delete only their own review. Anyone else's returns `FORBIDDEN` — the same
+3. A product's slug and SKU are fixed at creation. A rename changes the name, never the address —
+   links do not rot, and a SKU that could change would not be an identifier.
+4. Only a catalogue manager may create or edit a product. The screens hide what a person cannot do;
+   the server refuses it regardless, which is the half that counts.
+5. An author may edit or delete only their own review. Anyone else's returns `FORBIDDEN` — the same
    answer whether or not the review exists, so the endpoint is not an existence oracle.
-4. Editing a review keeps its identity and its `created_at`; the list shows it as edited.
-5. Deleting a review removes the row. The aggregate follows on the next recomputation.
-6. A submitted review is visible to its author immediately, because the review list reads the
+6. Editing a review keeps its identity and its `created_at`; the list shows it as edited.
+7. Deleting a review removes the row. The aggregate follows on the next recomputation.
+8. A submitted review is visible to its author immediately, because the review list reads the
    authoritative table (ADR-0014).
-7. The aggregate may lag. Every place it appears also says when it was computed. **The UI never
+9. The aggregate may lag. Every place it appears also says when it was computed. **The UI never
    computes an average locally to hide the lag** — showing a number that is about to change is worse
    than showing one that is honestly a moment old.
-8. A product with no reviews has no average. The UI shows "No reviews yet", never `0.0`.
-9. Reading is anonymous. Writing requires a session, and an anonymous write is answered `401` before
+10. A product with no reviews has no average. The UI shows "No reviews yet", never `0.0`.
+11. Reading is anonymous. Writing requires a session, and an anonymous write is answered `401` before
    it reaches any pipeline.
 
 ### Journeys
@@ -86,7 +97,13 @@ or explicit cancel.
 edit re-uses the submission form pre-filled; delete asks for confirmation in a focus-trapped dialog
 and cannot be triggered twice.
 
-**J5 — the second review.** An author who already reviewed a product sees their review and an
+**J5 — author a product (catalogue manager).** Catalogue → *New product* → name, description,
+category, price, SKU, with the slug previewed live from the name and editable before the first save
+→ create → land on the new product's detail screen, which shows "No reviews yet" and no average,
+because no recomputation has run and none is owed (SPEC-0004). Editing a product later reaches the
+same form with slug and SKU shown but not editable, each with the reason beside it.
+
+**J6 — the second review.** An author who already reviewed a product sees their review and an
 *Edit* action, not a submission form. If a stale client submits anyway, the `CONFLICT` answer is
 rendered as "You have already reviewed this product" with a link to their review — a typed answer
 turned into a route, not an error toast.
@@ -117,17 +134,20 @@ Replaces today's placeholder home route (`apps/app/src/routes/index.tsx`).
   which after seeding means something is wrong, so it also links to the setup section; *empty (filter
   matched nothing)* — the filter echoed back with a clear-filters action; *error* — the message-map
   copy for the code, with retry; *unrated product* — "No reviews yet" in place of the stars.
+- **Manager affordance:** a *New product* action, rendered only when the session bootstrap reports
+  `canManageCatalogue` (S7). Hiding it is courtesy; the server is what refuses.
 - **Pagination:** a *Load more* action appending the next cursor page. Not infinite scroll: it takes
   the keyboard focus away from nobody and needs no scroll restoration.
 - **Keyboard:** every card is a link; the filter controls are native form controls; nothing is a
   click-handler on a `div`.
 
-#### S3 — Product detail (`/products/$productToken`)
+#### S3 — Product detail (`/products/$productSlug`)
 
 - **Reads:** `products.get` for the product and its aggregate, `reviews.listForProduct` for the
   reviews. Two queries, deliberately: one is the projection and one is the truth (ADR-0014), and
   they invalidate on different events.
-- **Header:** name, category, price, description; the aggregate as stars, the numeric average to one
+- **Header:** name, category, price, SKU, description; an *Edit product* action for a catalogue
+  manager (S7) and nothing where it would be for anyone else; the aggregate as stars, the numeric average to one
   decimal, the review count, and the computed-at line spelled out — "Average from 24 reviews,
   calculated 2 minutes ago".
 - **Own-review block:** when the session's user has a review, it is pulled out above the list with
@@ -154,7 +174,7 @@ J3's round trip through sign-in returns to exactly it.
 - **Submission:** the button is disabled while in flight and the form is not re-submittable by a
   second `Enter`. Client-side validation mirrors the wire schema; the server's answer wins.
 - **Errors:** by code — `VALIDATION` renders per-field messages from `details`; `CONFLICT` becomes
-  J5's copy; `UNAUTHORIZED` triggers J3's sign-in round trip with the draft preserved;
+  J6's copy; `UNAUTHORIZED` triggers J3's sign-in round trip with the draft preserved;
   `RATE_LIMITED` says when to retry; everything else is the generic failure copy with the draft
   intact. **Nothing is destroyed by a failed submission.**
 - **After success:** the form closes, the review list is invalidated and refetched, the new review is
@@ -166,6 +186,26 @@ J3's round trip through sign-in returns to exactly it.
 A dialog on Radix behaviour (focus trap, `Escape` to dismiss, focus returned to the trigger).
 Names the product and the rating being removed, and its confirm action is destructive-styled. In
 flight it disables both actions rather than closing optimistically.
+
+#### S7 — Product create / edit (`/products/new`, `/products/$productSlug/edit`)
+
+Reachable only when the session bootstrap reports `canManageCatalogue`; a visitor who types the URL
+gets the same answer the server gives — the route redirects to the product or the catalogue, and the
+API returns `403` if the client tries anyway.
+
+- **Fields:** name (required), description (required), category (a select over the vocabulary),
+  price with its currency, and SKU (required, uppercase, format hinted inline rather than explained
+  after failure).
+- **Slug:** previewed live beneath the name field — "will be published at `/products/sony-wh-1000xm5`"
+  — derived client-side for the preview and **server-side for the value**. An *Edit slug* action
+  reveals the field before the first save; after creation it is shown, disabled, with the reason
+  ("the address is fixed so links keep working"), and so is the SKU.
+- **Conflicts:** a duplicate slug or SKU comes back as `CONFLICT` with `details.field`, and the
+  message attaches to that input rather than to the form. Nothing in the form is cleared.
+- **Keyboard and focus:** one native form, submit on `Enter`, disabled while in flight, and on
+  success focus lands on the new product's heading rather than at the top of the page.
+- **Entry points:** *New product* on the catalogue (S2) and *Edit product* on product detail (S3),
+  both rendered only for a manager.
 
 #### S6 — Not found and error boundary
 
@@ -195,6 +235,7 @@ Under `apps/app/src/features/`, one folder per user-facing feature, no slice imp
 | `catalogue` | Search/filter/sort state, the product card, the list query | S2 |
 | `product-detail` | The product header, aggregate display, review list and paging | S3 |
 | `review-submit` | The form, its draft persistence, submission and delete dialog | S4, S5 |
+| `catalogue-authoring` | The product form, slug derivation preview, create and edit mutations | S7 |
 
 In `shared/`, because two slices need them: the message map, the query keys
 (`shared/query-keys`, derived from `apiQuery` — never hand-written literals), the API client
@@ -227,7 +268,8 @@ Each names the seam it would use, so "later" means "extend", not "rework":
 | Review images | An object-store port in `@repo/contracts` with a deterministic stub (ADR-0005) |
 | Seller replies | A second content table referencing the review; the same submission pipeline shape |
 | Reporting and abuse handling | An event on the messaging bus; no synchronous path needed |
-| Product authoring / catalogue admin | Products are seeded (TASK-0006); an admin surface is a new bounded context, not a screen in this one |
+| Product deletion or retirement | A state column on the product row and a filtered read; the cascade SPEC-0002 already describes makes hard deletion the wrong default once a catalogue is real |
+| Granting the capability from a screen | `auth.app_user.catalogue_manager` is set by seed or by hand (ADR-0017); an admin screen for it is a surface with its own authorization question |
 
 ## Open questions
 
@@ -248,13 +290,15 @@ Each names the seam it would use, so "later" means "extend", not "rework":
 
 | Part of this specification | Constrained by | Implemented by |
 |---|---|---|
-| Actors, session requirement | ADR-0013 | TASK-0003 |
-| Domain objects, tokens | ADR-0011, SPEC-0002 | TASK-0002 |
-| Rules 1–5 (rating, uniqueness, ownership) | ADR-0011 | TASK-0002, TASK-0003 |
-| Rules 6–8 (visibility, staleness, no average) | ADR-0014 | TASK-0004, TASK-0005 |
-| Rule 9 (anonymous reads, 401 writes) | ADR-0013, ADR-0008 | TASK-0003 |
-| Journeys J1–J5 | ADR-0012 | TASK-0004 |
+| Actors, session requirement, the catalogue-manager capability | ADR-0017 | TASK-0003, TASK-0008 |
+| Domain objects, slug and SKU identity | ADR-0016, SPEC-0002 | TASK-0002, TASK-0008 |
+| Rules 1–2, 5–7 (rating, uniqueness, ownership) | ADR-0016 | TASK-0002, TASK-0003 |
+| Rules 3–4 (immutable address, who may author) | ADR-0016, ADR-0017 | TASK-0008 |
+| Rules 8–10 (visibility, staleness, no average) | ADR-0014 | TASK-0004, TASK-0005 |
+| Rule 11 (anonymous reads, 401 writes) | ADR-0017, ADR-0008 | TASK-0003 |
+| Journeys J1–J6 | ADR-0012 | TASK-0004, TASK-0008 |
 | Screens S1–S6, slice map, primitives | ADR-0012 | TASK-0004 |
+| Screen S7 and the `catalogue-authoring` slice | ADR-0012, ADR-0017 | TASK-0008 |
 | Error surface and message map | ADR-0008 | TASK-0004 |
 | Accessibility floors | ADR-0012, ADR-0010 | TASK-0004 |
 | Seeded catalogue the screens assume | ADR-0005 | TASK-0006 |

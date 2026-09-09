@@ -2,7 +2,7 @@
 id: TASK-0001
 title: Workspace scaffold, foundation modules, and the gate chain
 status: in-progress
-adr: [ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0013]
+adr: [ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0012, ADR-0016, ADR-0017]
 date: 2026-09-08
 ---
 
@@ -19,7 +19,7 @@ stack, and the decision records and task index under `docs/`.
 
 The review domain itself — its schema, its contract, its routes and its screens. `apps/api` serves
 health and authentication and nothing else at the end of this task; `apps/app` renders a shell and a
-sign-in flow. Deployment beyond local Compose. Any production mail transport (ADR-0013 records why).
+sign-in flow. Deployment beyond local Compose. Any production mail transport (ADR-0017 records why).
 
 ## Acceptance criteria
 
