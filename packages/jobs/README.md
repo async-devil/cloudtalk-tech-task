@@ -36,6 +36,7 @@ completeBranch(db, contract, branch: BranchIdentity): Promise<JoinDecision>;
 failBranch(db, contract, branch: FailBranchOptions): Promise<void>;
 
 writeDeadLetter(db, contract, record: DeadLetterRecord): Promise<void>;
+writeOutboxDeadLetter(db, record: OutboxDeadLetterRecord): Promise<void>;
 
 insertOutboxRows(trx, outbox: OutboxTableRef, rows: ReadonlyArray<OutboxInsert>): Promise<void>;
 relayOutboxBatch(options: OutboxRelayOptions): Promise<OutboxRelayReport>;
@@ -110,7 +111,9 @@ from the `@repo/entities` consts, and creates `jobs.dead_letter`. Runs after
 - **INV-7** — `relayOutboxBatch` isolates per-row failures inside ONE transaction per pass: a
   poison row's `apply` throwing does not roll back siblings already marked `Processed` in the
   same pass; a row parks (`Dead`) once `attempts >= maxAttempts`, one `warn` log per newly-parked
-  row. Test: `test-integration/outbox.test.ts`.
+  row, AND a `jobs.dead_letter` triage row via `writeOutboxDeadLetter` (SPEC-0004) written in that
+  SAME transaction, so parking and its triage record commit together. Test:
+  `test-integration/outbox.test.ts`.
 - **INV-8** — `reconcilePipeline` derives every action from Postgres truth alone (no Redis read):
   stale `in_progress` stages and stale `Pending` owned branches are redriven
   (`Enqueuer.remove` then re-`enqueue`, dedup-safe by the state-check inside `claimStage`); stale
@@ -154,6 +157,19 @@ from the `@repo/entities` consts, and creates `jobs.dead_letter`. Runs after
   Test: `packages/example-context/test-integration/check-health.test.ts` (the consumer-side scope
   assertions).
 
+- **INV-14** — `writeOutboxDeadLetter` (SPEC-0004) writes ONLY the shared `jobs.dead_letter` row
+  for an outbox pipeline — no instance-table update, no branch-table update, no
+  `PipelineTableContract` (see `src/dead-letter.ts`'s header for why this is a separate function
+  from `writeDeadLetter` rather than a variant of it). It guards `instanceId` against
+  `jobs.dead_letter.instance_id`'s `uuid NOT NULL` column before attempting the `INSERT`: a
+  non-uuid instance id (an outbox's `aggregate_id` is merely `text`) is skipped with one `warn`
+  log rather than thrown, because a failed statement would abort the caller's whole transaction —
+  the relay's own claim transaction — rolling back the park along with it. `reason` is truncated
+  to `REASON_MAX_LENGTH` (500) exactly as `writeDeadLetter`'s is, and the same `ON CONFLICT DO
+  NOTHING` target makes a replayed park a no-op. Test: `test/outbox-dead-letter.test.ts` (reason
+  truncation, the uuid guard, both without a database); `test-integration/outbox.test.ts` (the row
+  actually landing, with the right pipeline/stage/attempts/reason, and the replay guard).
+
 ## Telemetry
 
 Source records: [ADR-0007](../../docs/adr/ADR-0007-jobs-transport-and-durability-spine.md) and
@@ -178,7 +194,7 @@ ADR-0009).
 | `jobs.reconciler.action` | counter | Stage, Outcome | `redriven` / `healed` / `dead_lettered` / `failed` (one unit the pass could not reconcile; the pass continued) |
 | `jobs.retention.run` | counter | Queue | one tick per retention pass, even empty; Queue = pipeline (ADR-0006) |
 | `jobs.retention.purged` | counter | Queue, Outcome | one add per target with the rows deleted: `stage_result` / `outbox_processed` / `outbox_dead` / `dead_letter` (ADR-0006) |
-| `jobs.dead-letter.write` | counter | Stage | every dead-letter row, whatever path wrote it. Dashed rather than `jobs.dead_letter.write`: ADR-0009's segment charset is `[a-z0-9-]`, so an underscore throws at `createCounter` time — see `src/dead-letter.ts` |
+| `jobs.dead-letter.write` | counter | Stage | every dead-letter row, whatever path wrote it — `writeDeadLetter` (stage pipelines) and `writeOutboxDeadLetter` (outbox pipelines, called from `relayOutboxBatch`'s parking branch) share this ONE counter. Dashed rather than `jobs.dead_letter.write`: ADR-0009's segment charset is `[a-z0-9-]`, so an underscore throws at `createCounter` time — see `src/dead-letter.ts` |
 
 No instance ids on metrics, ever — ids live on spans and logs (ADR-0009 cardinality budget).
 

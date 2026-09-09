@@ -19,7 +19,9 @@ export {
 export {
   DEAD_LETTER_WRITE_INSTRUMENT,
   type DeadLetterRecord,
+  type OutboxDeadLetterRecord,
   writeDeadLetter,
+  writeOutboxDeadLetter,
 } from './dead-letter.js';
 export {
   computeOldestPendingAgeMs,
