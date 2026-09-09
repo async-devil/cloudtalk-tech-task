@@ -50,8 +50,8 @@ code.
 | ID | Title | Status | Decisions |
 |---|---|---|---|
 | [TASK-0001](tasks/TASK-0001-workspace-scaffold-and-carried-modules.md) | Workspace scaffold, foundation modules, and the gate chain | in-progress | ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0012, ADR-0016, ADR-0018 |
-| [TASK-0002](tasks/TASK-0002-reviews-bounded-context.md) | The reviews bounded context — schema, migrations, and the submission pipeline | ready | ADR-0006, ADR-0007, ADR-0014, ADR-0016 |
-| [TASK-0003](tasks/TASK-0003-products-and-reviews-api.md) | The products and reviews API surface | draft | ADR-0004, ADR-0008, ADR-0018 |
+| [TASK-0002](tasks/TASK-0002-reviews-bounded-context.md) | The reviews bounded context — schema, migrations, and the submission pipeline | done | ADR-0006, ADR-0007, ADR-0014, ADR-0016 |
+| [TASK-0003](tasks/TASK-0003-products-and-reviews-api.md) | The products and reviews API surface | ready | ADR-0004, ADR-0008, ADR-0018 |
 | [TASK-0004](tasks/TASK-0004-spa-product-and-review-screens.md) | SPA — product list, product detail, and the review submission flow | draft | ADR-0008, ADR-0012 |
 | [TASK-0005](tasks/TASK-0005-rating-aggregation-worker.md) | The rating aggregation worker | draft | ADR-0007, ADR-0014 |
 | [TASK-0006](tasks/TASK-0006-seed-data-and-one-command-setup.md) | Seed data and a one-command local setup | draft | ADR-0005 |
