@@ -30,6 +30,20 @@ export {
   stageStatusRowSchema,
 } from './jobs/stage-status.entity.js';
 export {
+  PRODUCT_CATEGORY,
+  type ProductCategoryId,
+  type ProductCategoryName,
+  type ProductCategoryRow,
+  productCategoryRowSchema,
+} from './reviews/product-category.entity.js';
+export {
+  REVIEW_MODERATION_STATE,
+  type ReviewModerationStateId,
+  type ReviewModerationStateName,
+  type ReviewModerationStateRow,
+  reviewModerationStateRowSchema,
+} from './reviews/review-moderation-state.entity.js';
+export {
   mintToken,
   TOKEN_ALPHABET,
   TOKEN_PREFIX,
