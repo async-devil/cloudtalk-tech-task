@@ -129,7 +129,12 @@
         "packages/persistence/**",
         "packages/messaging/**",
         "packages/jobs/**",
-        "packages/auth/**"
+        "packages/auth/**",
+        // packages/reviews/test-integration's own Testcontainers harness — the same Docker-host
+        // autodetect block (node:fs/node:os/node:process/node:url) every other package's
+        // test-integration harness above already carries, duplicated rather than imported for the
+        // same reason theirs are (see that harness's header comment).
+        "packages/reviews/**"
       ],
       "linter": {
         "rules": {
