@@ -17,10 +17,12 @@
     "@repo/auth": "workspace:*",
     "@repo/config": "workspace:*",
     "@repo/contracts": "workspace:*",
+    "@repo/jobs": "workspace:*",
     "@repo/kernel": "workspace:*",
     "@repo/messaging": "workspace:*",
     "@repo/observability": "workspace:*",
-    "@repo/persistence": "workspace:*"
+    "@repo/persistence": "workspace:*",
+    "@repo/reviews": "workspace:*"
   },
   "devDependencies": {
     "pg": "8.22.0",
