@@ -19,6 +19,7 @@ export {
   createSessionMiddleware,
   type RequestSession,
   requireCatalogueManager,
+  requireModerator,
   requireSession,
   resolveRequestSession,
   type SessionMiddlewareDependencies,
