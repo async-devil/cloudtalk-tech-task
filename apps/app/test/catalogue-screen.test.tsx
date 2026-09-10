@@ -259,3 +259,37 @@ describe('CatalogueScreen — the "New product" entry point (TASK-0008)', () => 
     expect(link.getAttribute('href')).toBe('/products/new');
   });
 });
+
+describe('CatalogueScreen — the "Moderation" entry point (TASK-0009)', () => {
+  it('is absent for an anonymous visitor', async () => {
+    await renderCatalogue('/', [productsRoute(() => jsonResponse(pageOf([])))]);
+    await screen.findByText('No products in the catalogue yet.');
+    expect(screen.queryByTestId('moderation-link')).toBeNull();
+  });
+
+  it('is absent for a signed-in session without canModerate', async () => {
+    await renderCatalogueSignedIn('/', { canModerate: false }, [
+      productsRoute(() => jsonResponse(pageOf([]))),
+    ]);
+    await screen.findByText('No products in the catalogue yet.');
+    expect(screen.queryByTestId('moderation-link')).toBeNull();
+  });
+
+  // The two capabilities are independent (SPEC-0001's own actor table): holding
+  // `canManageCatalogue` alone must not also surface the moderation link.
+  it('is absent for a catalogue manager who is not a moderator', async () => {
+    await renderCatalogueSignedIn('/', { canManageCatalogue: true, canModerate: false }, [
+      productsRoute(() => jsonResponse(pageOf([]))),
+    ]);
+    expect(await screen.findByTestId('new-product-link')).toBeTruthy();
+    expect(screen.queryByTestId('moderation-link')).toBeNull();
+  });
+
+  it('is present for a moderator', async () => {
+    await renderCatalogueSignedIn('/', { canModerate: true }, [
+      productsRoute(() => jsonResponse(pageOf([]))),
+    ]);
+    const link = await screen.findByTestId('moderation-link');
+    expect(link.getAttribute('href')).toBe('/moderation');
+  });
+});

@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root';
 import { Route as IndexRouteImport } from './routes/index';
+import { Route as ModerationRouteImport } from './routes/moderation';
 import { Route as ProductsProductSlugRouteImport } from './routes/products/$productSlug';
 import { Route as ProductsProductSlugEditRouteImport } from './routes/products/$productSlug_.edit';
 import { Route as ProductsNewRouteImport } from './routes/products/new';
@@ -18,6 +19,11 @@ import { Route as SignInRouteImport } from './routes/sign-in';
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any);
+const ModerationRoute = ModerationRouteImport.update({
+  id: '/moderation',
+  path: '/moderation',
   getParentRoute: () => rootRouteImport,
 } as any);
 const SignInRoute = SignInRouteImport.update({
@@ -43,6 +49,7 @@ const ProductsProductSlugEditRoute = ProductsProductSlugEditRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute;
+  '/moderation': typeof ModerationRoute;
   '/sign-in': typeof SignInRoute;
   '/products/$productSlug': typeof ProductsProductSlugRoute;
   '/products/new': typeof ProductsNewRoute;
@@ -50,6 +57,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute;
+  '/moderation': typeof ModerationRoute;
   '/sign-in': typeof SignInRoute;
   '/products/$productSlug': typeof ProductsProductSlugRoute;
   '/products/new': typeof ProductsNewRoute;
@@ -58,6 +66,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
   '/': typeof IndexRoute;
+  '/moderation': typeof ModerationRoute;
   '/sign-in': typeof SignInRoute;
   '/products/$productSlug': typeof ProductsProductSlugRoute;
   '/products/new': typeof ProductsNewRoute;
@@ -67,15 +76,23 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath;
   fullPaths:
     | '/'
+    | '/moderation'
     | '/sign-in'
     | '/products/$productSlug'
     | '/products/new'
     | '/products/$productSlug/edit';
   fileRoutesByTo: FileRoutesByTo;
-  to: '/' | '/sign-in' | '/products/$productSlug' | '/products/new' | '/products/$productSlug/edit';
+  to:
+    | '/'
+    | '/moderation'
+    | '/sign-in'
+    | '/products/$productSlug'
+    | '/products/new'
+    | '/products/$productSlug/edit';
   id:
     | '__root__'
     | '/'
+    | '/moderation'
     | '/sign-in'
     | '/products/$productSlug'
     | '/products/new'
@@ -84,6 +101,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute;
+  ModerationRoute: typeof ModerationRoute;
   SignInRoute: typeof SignInRoute;
   ProductsProductSlugRoute: typeof ProductsProductSlugRoute;
   ProductsNewRoute: typeof ProductsNewRoute;
@@ -97,6 +115,13 @@ declare module '@tanstack/react-router' {
       path: '/';
       fullPath: '/';
       preLoaderRoute: typeof IndexRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    '/moderation': {
+      id: '/moderation';
+      path: '/moderation';
+      fullPath: '/moderation';
+      preLoaderRoute: typeof ModerationRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     '/sign-in': {
@@ -132,6 +157,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ModerationRoute: ModerationRoute,
   SignInRoute: SignInRoute,
   ProductsProductSlugRoute: ProductsProductSlugRoute,
   ProductsNewRoute: ProductsNewRoute,

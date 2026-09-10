@@ -39,8 +39,10 @@ export function CatalogueScreen({ search, onSearchChange }: CatalogueScreenProps
   const query = useCatalogueProducts(filters);
   const filterActive = hasActiveFilter(filters);
   // Visitor surface (rule 15) — the "signed in" line, AND (TASK-0008) the "New product" entry
-  // point below, gated on `canManageCatalogue`. Courtesy only: `products.create`'s own
-  // `requireCatalogueManager` guard is the actual boundary regardless of what renders here.
+  // point below, gated on `canManageCatalogue`, AND (TASK-0009) the "Moderation" entry point,
+  // gated on `canModerate`. Courtesy only: `products.create`'s own `requireCatalogueManager` guard
+  // and `reviews.reject`/`restore`/`moderationList`'s own `requireModerator` guard are the actual
+  // boundaries regardless of what renders here.
   const session = useSession();
   const searchFieldId = useId();
   const categoryFieldId = useId();
@@ -77,6 +79,22 @@ export function CatalogueScreen({ search, onSearchChange }: CatalogueScreenProps
             <Button type="button" asChild>
               <Link to="/products/new" data-testid="new-product-link">
                 New product
+              </Link>
+            </Button>
+          )}
+          {/* TASK-0009's entry point (SPEC-0001 S8: "a link in the app's primary navigation…
+              the same affordance pattern as S7's New product"). JUDGMENT CALL: this app has no
+              persistent nav bar shared across routes (`__root.tsx`'s `RootLayout` is an `<Outlet/>`
+              in a padded div, nothing else) — adding one for exactly this one link would be new
+              shared-kernel UI scope this dispatch does not need, for a link that appears on
+              exactly one already-existing screen either way. The catalogue (S2) is this app's
+              landing screen and already carries the identical affordance for S7, in the identical
+              spot, gated the identical way; putting S8's link here is "the same affordance pattern"
+              literally, not a stand-in for it. */}
+          {session?.canModerate === true && (
+            <Button type="button" variant="outline" asChild>
+              <Link to="/moderation" data-testid="moderation-link">
+                Moderation
               </Link>
             </Button>
           )}
