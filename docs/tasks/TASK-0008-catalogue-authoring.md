@@ -1,7 +1,7 @@
 ---
 id: TASK-0008
 title: Catalogue authoring — product creation and editing behind a capability
-status: draft
+status: ready
 adr: [ADR-0016, ADR-0018]
 date: 2026-09-09
 ---
