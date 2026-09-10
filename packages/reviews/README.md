@@ -2,38 +2,46 @@
 
 ## Purpose
 
-The reviews bounded context (TASK-0002, TASK-0003, SPEC-0002, SPEC-0003): owns the product
-catalogue's canonical rows (`reviews.product`), the canonical review rows (`reviews.review`), and
-the rating-aggregate projection (`reviews.product_rating`) recomputed from them (ADR-0014), for
-both writes and reads. `submitReview` follows ADR-0007's six-step shape end to end: a state check
-outside any transaction, an advisory-lock claim, no external call (there is none to make), no
-write-ahead (there is no paid outcome to record), a single commit that inserts the review and its
-outbox row together, and typed-failure translation for the one collision the natural key makes
-possible. `updateReview`/`removeReview` follow the same shape, shorter (no replay/conflict branch
-to decide), and end in the same `rating.recompute` outbox row `submitReview` emits (SPEC-0004).
-`createProduct`/`updateProduct` own the catalogue's write path and guard its immutable identity
-fields (`slug`, `sku`); `recomputeProductRating`/`rebuildProductRating` are this context's only
-writers of `reviews.product_rating`, and the projection can be dropped and rebuilt from the
-authoritative review rows at any time (ADR-0014). `listProducts`/`getProductBySlug` read that same
-projection; `listReviewsForProduct` reads the authoritative `reviews.review` table directly — the
-read split TASK-0003 asks this package to make visible in its own `FROM`/`JOIN` clauses, with no
-comment needed to say so, and exactly why an author sees their own review immediately while the
-average may still show its previous value (ADR-0014, SPEC-0001 rules 8 and 13).
+The reviews bounded context (TASK-0002, TASK-0003, TASK-0009, SPEC-0002, SPEC-0003): owns the
+product catalogue's canonical rows (`reviews.product`), the canonical review rows
+(`reviews.review`), and the rating-aggregate projection (`reviews.product_rating`) recomputed from
+them (ADR-0014), for both writes and reads. `submitReview` follows ADR-0007's six-step shape end to
+end: a state check outside any transaction, an advisory-lock claim, no external call (there is none
+to make), no write-ahead (there is no paid outcome to record), a single commit that inserts the
+review and its outbox row together, and typed-failure translation for the one collision the natural
+key makes possible. `updateReview`/`removeReview` follow the same shape, shorter (no replay/conflict
+branch to decide), and end in the same `rating.recompute` outbox row `submitReview` emits
+(SPEC-0004). `setReviewModerationState` (`moderation.ts`, TASK-0009, ADR-0018) is the same shape
+again, with the ownership guard removed (a moderator acts on any review) and a state-equality no-op
+branch in place of the replay branch — reject and restore are ONE function reading two target
+states, never two code paths, and it ends in the identical `rating.recompute` outbox row every
+other write here emits: moderation is a write to the authoritative table, not a side channel the
+projection can miss. `createProduct`/`updateProduct` own the catalogue's write path and guard its
+immutable identity fields (`slug`, `sku`); `recomputeProductRating`/`rebuildProductRating` are this
+context's only writers of `reviews.product_rating`, and the projection can be dropped and rebuilt
+from the authoritative review rows at any time (ADR-0014). `listProducts`/`getProductBySlug` read
+that same projection; `listReviewsForProduct` reads the authoritative `reviews.review` table
+directly — the read split TASK-0003 asks this package to make visible in its own `FROM`/`JOIN`
+clauses, with no comment needed to say so, and exactly why an author sees their own review
+immediately while the average may still show its previous value (ADR-0014, SPEC-0001 rules 8 and
+13). `listReviewsForModeration` (`moderation.ts`, TASK-0009) is the one read in this package scoped
+by moderation STATE rather than by product, across every product, joined to `reviews.product` for
+the name/slug a moderation screen needs per row.
 
-**When NOT to use this.** This package owns product/review domain reads AND writes and the rating
-projection's write path — it is not an HTTP surface: request parsing, session/auth resolution,
-rate limiting, and the wire-shape mapping of every type here (including converting `authorId` to
-`authorLabel`/`authoredByViewer` and `ratingAverage`/`computedAt` to their wire shapes) are
-TASK-0003's router, `apps/api/src/routes/{products,reviews}/`. It is not the aggregation worker —
-the scheduled outbox relay that calls `recomputeProductRating` on a cadence, and its own span/
-counter/histogram, are TASK-0005's; nothing in this package schedules anything. It is not a
-moderation decision engine — storing `review_moderation_state_id` is in scope, but deciding when a
-review moves between `published` and `rejected`, and the moderation-scoped list that reads
-regardless of state, are a separate write/read path this package does not implement (TASK-0009).
+**When NOT to use this.** This package owns product/review domain reads AND writes, the rating
+projection's write path, and the moderation state transition — it is not an HTTP surface: request
+parsing, session/auth resolution, capability enforcement (whether a caller HOLDS `moderator` —
+`@repo/auth`'s `requireModerator` is that boundary, this package only stores and transitions the
+column), rate limiting, and the wire-shape mapping of every type here (including converting
+`authorId` to `authorLabel`/`authoredByViewer` and `ratingAverage`/`computedAt` to their wire
+shapes) are TASK-0003/TASK-0009's router, `apps/api/src/routes/{products,reviews}/`. It is not the
+aggregation worker — the scheduled outbox relay that calls `recomputeProductRating` on a cadence,
+and its own span/counter/histogram, are TASK-0005's; nothing in this package schedules anything.
 And it is not where an author's identity becomes a display label — `authorLabel`'s derivation from
 `auth.identity.email` lives in `@repo/auth` (`authorLabelsForUserIds`), because this package has no
-sanctioned edge to the `auth` schema (ADR-0001); `listReviewsForProduct` hands back the author's
-internal id for exactly that reason (see `ReviewListItem`'s own doc).
+sanctioned edge to the `auth` schema (ADR-0001); `listReviewsForProduct`/`listReviewsForModeration`/
+`setReviewModerationState` all hand back the author's internal id for exactly that reason (see
+`ReviewListItem`'s own doc).
 
 ## Public contract
 
@@ -61,6 +69,15 @@ rebuildProductRating(
   options?: RebuildProductRatingOptions,
 ): Promise<RebuildProductRatingReport>;
 
+setReviewModerationState(
+  db: Kysely<unknown>,
+  input: SetReviewModerationStateInput,   // { reviewToken, targetState: 'published' | 'rejected' }
+): Promise<ReviewModerationRecord>;
+listReviewsForModeration(
+  db: Kysely<unknown>,
+  input: ListReviewsForModerationInput,   // { state?: 'published' | 'rejected', cursor?, limit }
+): Promise<ModerationReviewListPage>;
+
 REVIEWS_OUTBOX: OutboxTableRef;       // { schema: 'reviews', table: 'outbox' }
 RATING_RECOMPUTE_OP: 'rating.recompute';
 ```
@@ -87,8 +104,20 @@ cursor?, limit }`. `ReviewMutationRecord { token, rating, title, body, createdAt
 `updateReview`'s result, deliberately without `moderationState` (an edit never touches it) or
 `productSlug` (no exported wire shape needs it back).
 
+`ReviewModerationRecord { token, rating, title, body, authorId, moderationState: 'published' |
+'rejected', createdAt, updatedAt }` — `setReviewModerationState`'s result; `moderationState` is
+always the caller's own `targetState` (every return path settles on it by construction — see the
+type's own TSDoc, `src/moderation.ts`), never re-derived from a raw row that could carry the seeded
+but unwritten `pending`. `ModerationReviewListItem { token, rating, title, body, authorId,
+productName, productSlug, moderationState: 'published' | 'rejected', createdAt, updatedAt }` —
+`authorId` is the SAME deliberate, narrow exception `ReviewListItem.authorId` is.
+`ModerationReviewListPage { items: ModerationReviewListItem[], nextCursor: string | null }`.
+`SetReviewModerationStateInput { reviewToken, targetState }`; `ListReviewsForModerationInput
+{ state?, cursor?, limit }` (`state` defaults to `'published'` at the call site, SPEC-0001 S8).
+
 No OTHER exported record type carries an internal uuid (ADR-0016) — `slug` and `token` are the
-only identifiers that cross this module's contract everywhere but `ReviewListItem.authorId`.
+only identifiers that cross this module's contract everywhere but `ReviewListItem.authorId`,
+`ModerationReviewListItem.authorId` and `ReviewModerationRecord.authorId`.
 
 Every `db` parameter is `Kysely<unknown>`: there is no generated DB type in this repository, so
 every query here is the `sql` tagged template plus a parsed row schema (ADR-0004).
@@ -159,6 +188,16 @@ Unit-proved now, against no database:
   or `=`), and anything that fails to decode — malformed base64, malformed JSON, or JSON that
   fails the caller's schema — is a `ValidationError({ field: 'cursor' })`, never a raw exception.
   Test: `test/cursor.test.ts`.
+- **INV-17** — `setReviewModerationState`'s branching (TASK-0009): a review already AT the
+  requested `targetState` is a no-op that issues exactly one `SELECT` and NOTHING else — no
+  advisory lock, no `UPDATE`, no outbox `INSERT` — and returns the current row; a genuine
+  transition issues exactly one lock, one `UPDATE`, and one outbox `INSERT`; a concurrent identical
+  transition landing between the pre-transaction read and the lock is absorbed as the same no-op
+  (re-read under the lock, zero additional writes), never a second write. Proved against a fake
+  `Kysely<unknown>` with full statement visibility (every `sql` call inspected, not merely the
+  return value), and by mutation: deleting the early no-op branch was performed and observed to
+  turn the no-op assertions red (a spurious `UPDATE`/outbox row appeared), then reverted — see that
+  test file's own header (ADR-0010). Test: `test/moderation.test.ts`.
 
 Container-proved (`test-integration/`, written against this package's
 `vitest.integration.config.ts` — TASK-0002's acceptance criteria proved by the engineer preceding
@@ -218,13 +257,25 @@ this one, TASK-0005's by this change):
   (SPEC-0001 rule 5). An edit preserves `createdAt`, moves `updatedAt`, and — like a deletion —
   emits the same `rating.recompute` outbox row a submission does (SPEC-0004). Test:
   `test-integration/review-list-and-mutations.test.ts`.
+- **INV-18** — `setReviewModerationState` against REAL Postgres (TASK-0009, SPEC-0001 rules 9-12,
+  SPEC-0004): rejecting a review with an outstanding aggregate commits the outbox row in the SAME
+  transaction as the state change — no window where the state changed and no recomputation was
+  scheduled, proved by applying the scheduled recomputation afterward and observing it correctly
+  exclude the now-rejected review; rejecting removes the review from `listReviewsForProduct`
+  without deleting the row, and restoring brings it back; a restored row is byte-identical to the
+  row before rejection apart from `updated_at`; rejecting an already-rejected review enqueues no
+  second outbox row; an unknown token throws `NotFoundError`. Test:
+  `test-integration/moderation.test.ts`.
 
 ## Telemetry
 
 Source records: [ADR-0009](../../docs/adr/ADR-0009-observability-through-a-facade.md),
+[ADR-0007](../../docs/adr/ADR-0007-jobs-transport-and-durability-spine.md),
+[ADR-0018](../../docs/adr/ADR-0018-authentication-with-moderator-capability.md),
 [TASK-0002](../../docs/tasks/TASK-0002-reviews-bounded-context.md),
-[TASK-0003](../../docs/tasks/TASK-0003-products-and-reviews-api.md) and
-[TASK-0005](../../docs/tasks/TASK-0005-rating-aggregation-worker.md).
+[TASK-0003](../../docs/tasks/TASK-0003-products-and-reviews-api.md),
+[TASK-0005](../../docs/tasks/TASK-0005-rating-aggregation-worker.md) and
+[TASK-0009](../../docs/tasks/TASK-0009-review-moderation.md).
 
 <!-- Every emitted span and instrument maps to a line here; the telemetry-map gate enforces both
      directions. -->
@@ -236,6 +287,11 @@ Source records: [ADR-0009](../../docs/adr/ADR-0009-observability-through-a-facad
 - `reviews.review.update` (TASK-0003)
 - `reviews.review.remove` (TASK-0003)
 - `reviews.review.list` (TASK-0003) — `listReviewsForProduct`.
+- `reviews.review.moderate` (TASK-0009, ADR-0007, ADR-0018) — `setReviewModerationState`, the ONE
+  function reading two target states (reject/restore are the same operation in reverse, TASK-0009's
+  own note), so one span name covers both directions. Attributes `outcome` (`changed` | `noop`),
+  `targetState` (`published` | `rejected`), `reviewToken`.
+- `reviews.review.moderation-list` (TASK-0009) — `listReviewsForModeration`.
 - `reviews.product.create`
 - `reviews.product.update`
 - `reviews.product.list` (TASK-0003)

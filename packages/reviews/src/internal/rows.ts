@@ -130,3 +130,36 @@ export const productSummaryRowSchema = z.object({
 export const productDetailRowSchema = productSummaryRowSchema.extend({
   description: z.string(),
 });
+
+/**
+ * `reviews.review`'s row shape for `setReviewModerationState`'s pre-transaction state check
+ * (TASK-0009) — {@link reviewRowSchema} plus `product_id`/`author_id`, both needed before a
+ * transaction ever opens: `product_id` for the outbox row's `aggregate_id`, `author_id` (together
+ * with `product_id`) for the advisory-lock key `submitReview`/`updateReview` already use. Both ids
+ * stay internal to this module (ADR-0016) — `ReviewModerationRecord` carries `authorId` back out
+ * for the SAME narrow, documented reason {@link ../reviews.js!ReviewListItem} does, never
+ * `product_id`, which no exported shape in this package needs past this read.
+ */
+export const reviewModerationRowSchema = reviewRowSchema.extend({
+  product_id: z.string(),
+  author_id: z.string(),
+});
+
+/**
+ * `reviews.review` JOINed to `reviews.product` — `listReviewsForModeration`'s row shape
+ * (TASK-0009). Unlike {@link reviewListRowSchema}, this is not scoped to one product (SPEC-0003:
+ * "the one route in this contract that reads a review regardless of its moderation state" — scoped
+ * by state, not by product), so the product's own `name`/`slug` ride along on every row.
+ */
+export const moderationReviewListRowSchema = z.object({
+  token: z.string(),
+  rating: z.number().int(),
+  title: z.string(),
+  body: z.string(),
+  author_id: z.string(),
+  review_moderation_state_id: z.number().int(),
+  product_name: z.string(),
+  product_slug: z.string(),
+  created_at: z.date(),
+  updated_at: z.date(),
+});

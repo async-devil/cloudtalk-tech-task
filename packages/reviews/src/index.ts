@@ -1,4 +1,15 @@
 // Public barrel — the module's entire public contract (ADR-0003: one barrel, no nested barrels).
+
+export {
+  type ListReviewsForModerationInput,
+  listReviewsForModeration,
+  type ModerationReviewListItem,
+  type ModerationReviewListPage,
+  type ModerationState,
+  type ReviewModerationRecord,
+  type SetReviewModerationStateInput,
+  setReviewModerationState,
+} from './moderation.js';
 export { RATING_RECOMPUTE_OP, REVIEWS_OUTBOX } from './outbox.js';
 export {
   type CreateProductInput,
