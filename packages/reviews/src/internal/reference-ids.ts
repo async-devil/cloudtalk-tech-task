@@ -31,6 +31,17 @@ const REVIEW_MODERATION_STATE_NAME_BY_ID = new Map<number, ReviewModerationState
   Object.values(REVIEW_MODERATION_STATE).map((state) => [state.id, state.name]),
 );
 
+// Keyed by the closed `'published' | 'rejected'` union, not `ReviewModerationStateName` (which
+// also admits `'pending'`): {@link reviewModerationStateIdFor}'s two call sites
+// (`setReviewModerationState`'s target state, `listReviewsForModeration`'s state filter) both
+// already hold a value narrowed by their own Zod input schema (SPEC-0003's `moderationStateSchema`
+// admits only these two) — `pending` is seeded but reachable through no wire input this module
+// resolves against (SPEC-0002), so this map deliberately has no entry for it.
+const REVIEW_MODERATION_STATE_ID_BY_MODERATABLE_NAME = new Map<'published' | 'rejected', number>([
+  [REVIEW_MODERATION_STATE.Published.name, REVIEW_MODERATION_STATE.Published.id],
+  [REVIEW_MODERATION_STATE.Rejected.name, REVIEW_MODERATION_STATE.Rejected.id],
+]);
+
 /**
  * `categoryName -> product_category_id`, from the compile-time `PRODUCT_CATEGORY` vocabulary —
  * never a join on `reference.product_category.name`. `createProduct`/`updateProduct`'s write path
@@ -83,4 +94,24 @@ export function reviewModerationStateNameFor(
     throw new InternalError(`unknown review_moderation_state_id ${reviewModerationStateId}`);
   }
   return name;
+}
+
+/**
+ * `name -> review_moderation_state_id`, the reverse of {@link reviewModerationStateNameFor} —
+ * `moderation.ts`'s `setReviewModerationState` (its target state) and `listReviewsForModeration`
+ * (its state filter) both resolve through this (TASK-0009). Typed to the closed
+ * `'published' | 'rejected'` union rather than `string`, UNLIKE {@link productCategoryIdFor}'s
+ * wire-sourced free-text parameter: both call sites already hold a value narrowed by their own Zod
+ * input schema (SPEC-0003's `moderationStateSchema`), so there is no untrusted string to parse at
+ * this boundary — a miss here would be schema drift (a vocabulary member with no map entry), never
+ * a caller's bad input, which is why this throws `InternalError` like {@link reviewModerationStateNameFor}
+ * does, never `ValidationError`.
+ * @throws InternalError when `name` names no seeded state.
+ */
+export function reviewModerationStateIdFor(name: 'published' | 'rejected'): number {
+  const id = REVIEW_MODERATION_STATE_ID_BY_MODERATABLE_NAME.get(name);
+  if (id === undefined) {
+    throw new InternalError(`unknown review moderation state name "${name}"`);
+  }
+  return id;
 }

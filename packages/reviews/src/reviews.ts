@@ -4,13 +4,13 @@ import {
   type ReviewModerationStateName,
   TOKEN_PREFIX,
 } from '@repo/entities';
-import { insertOutboxRows } from '@repo/jobs';
 import { ConflictError, ValidationError } from '@repo/kernel';
 import { rowAs, rowsAs } from '@repo/persistence';
 import { type Kysely, sql } from 'kysely';
 import { z } from 'zod';
 import { acquireReviewLock } from './internal/advisory-lock.js';
 import { decodeCursor, encodeCursor } from './internal/cursor.js';
+import { emitRatingRecompute } from './internal/emit-rating-recompute.js';
 import { obs } from './internal/observability.js';
 import { reviewModerationStateNameFor } from './internal/reference-ids.js';
 import { resolveProductId } from './internal/resolve-product.js';
@@ -21,7 +21,6 @@ import {
   UNIQUE_CONSTRAINT,
   uniqueViolationConstraintOf,
 } from './internal/unique-violation.js';
-import { RATING_RECOMPUTE_OP, REVIEWS_OUTBOX } from './outbox.js';
 
 /** `submitReview`'s input. `authorId` is `auth.app_user.app_user_id` — resolved by the caller
  * (TASK-0003's session middleware), never minted or looked up here. */
@@ -110,12 +109,6 @@ function replayOrConflict(
   throw new ConflictError('you have already reviewed this product', {
     details: { field: 'review' },
   });
-}
-
-async function emitRatingRecompute(trx: Kysely<unknown>, productId: string): Promise<void> {
-  await insertOutboxRows(trx, REVIEWS_OUTBOX, [
-    { aggregateId: productId, op: RATING_RECOMPUTE_OP, payload: {} },
-  ]);
 }
 
 /**
