@@ -27,6 +27,15 @@ export interface RequestSession {
    * {@link requireCatalogueManager} is the boundary that actually enforces it.
    */
   readonly catalogueManager: boolean;
+  /**
+   * `auth.app_user.moderator` (TASK-0009, ADR-0018): whether this session's user holds the
+   * capability to reject a review and restore a rejected one. Independent of `catalogueManager` —
+   * holding one implies nothing about the other (ADR-0018). Server-side only, never serialized
+   * as-is; the bootstrap payload exposes it as `canModerate` (SPEC-0003), the same deliberately
+   * different name convention `canManageCatalogue` already sets. {@link requireModerator} is the
+   * boundary that actually enforces it.
+   */
+  readonly moderator: boolean;
 }
 
 /** Dependencies for the session middleware. */
@@ -56,7 +65,7 @@ export async function resolveRequestSession(
       return undefined;
     }
     const result = await sql`
-      SELECT app_user_id, token, catalogue_manager FROM auth.app_user
+      SELECT app_user_id, token, catalogue_manager, moderator FROM auth.app_user
       WHERE identity_id = ${lookup.session.userId}::uuid
     `.execute(deps.db);
     if (result.rows[0] === undefined) {
@@ -70,6 +79,7 @@ export async function resolveRequestSession(
       userId: appUser.app_user_id,
       userToken: appUser.token,
       catalogueManager: appUser.catalogue_manager,
+      moderator: appUser.moderator,
     };
   });
 }
@@ -114,6 +124,22 @@ export function requireCatalogueManager(context: {
   const session = requireSession(context);
   if (!session.catalogueManager) {
     throw new ForbiddenError('catalogue_manager capability required');
+  }
+  return session;
+}
+
+/**
+ * Guard for route handlers that need the `moderator` capability (TASK-0009, ADR-0018, SPEC-0003) —
+ * the identical shape {@link requireCatalogueManager} establishes, for the other capability: no
+ * session still 401s (via {@link requireSession}), and a resolved session whose user does not hold
+ * `moderator` — including one that holds only `catalogue_manager` — 403s rather than being let
+ * through. Both capabilities are independent booleans (ADR-0018): holding one never satisfies this
+ * guard on its own.
+ */
+export function requireModerator(context: { readonly session?: RequestSession }): RequestSession {
+  const session = requireSession(context);
+  if (!session.moderator) {
+    throw new ForbiddenError('moderator capability required');
   }
   return session;
 }
