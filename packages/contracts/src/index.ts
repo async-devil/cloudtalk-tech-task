@@ -16,6 +16,9 @@ export {
   skuSchema,
 } from './contracts/products/products.js';
 export {
+  type ModerationReviewSummary,
+  moderationReviewSummarySchema,
+  moderationStateSchema,
   type ReviewSummary,
   ratingSchema,
   reviewBodySchema,
