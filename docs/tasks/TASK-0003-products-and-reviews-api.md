@@ -1,7 +1,7 @@
 ---
 id: TASK-0003
 title: The products and reviews API surface
-status: ready
+status: done
 adr: [ADR-0004, ADR-0008, ADR-0018]
 date: 2026-09-08
 ---
@@ -21,18 +21,18 @@ name.
 
 ## Acceptance criteria
 
-- [ ] Every route is declared in the contract before it is implemented; an unimplemented contract
+- [x] Every route is declared in the contract before it is implemented; an unimplemented contract
       namespace fails the build.
-- [ ] Write routes require a resolved session; an anonymous request receives 401 without reaching
+- [x] Write routes require a resolved session; an anonymous request receives 401 without reaching
       the pipeline.
-- [ ] Editing or deleting a review authored by another user returns 403, asserted at the HTTP layer
+- [x] Editing or deleting a review authored by another user returns 403, asserted at the HTTP layer
       rather than in a unit test of the guard.
-- [ ] List endpoints are paginated with a bounded page size; a request for an unbounded page is
+- [x] List endpoints are paginated with a bounded page size; a request for an unbounded page is
       rejected, not silently capped.
-- [ ] The OpenAPI document generated from the contract lists every route with its error shapes.
-- [ ] Domain failures map to status codes in the error mapper only; no handler constructs a
+- [x] The OpenAPI document generated from the contract lists every route with its error shapes.
+- [x] Domain failures map to status codes in the error mapper only; no handler constructs a
       `Response` for an error case.
-- [ ] The rate limit applies to unauthenticated reads and to review submission, with a test that
+- [x] The rate limit applies to unauthenticated reads and to review submission, with a test that
       asserts the response headers on rejection.
 
 ## Notes

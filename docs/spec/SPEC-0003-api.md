@@ -142,9 +142,16 @@ Input `{ productSlug }`. Unknown slug → `NOT_FOUND`. Also reads the projection
 #### `reviews.listForProduct`
 
 Input `{ productSlug, cursor?, limit? (≤50, default 20) }`. Newest first, keyset-paginated on
-`(created_at, review_id)` — an offset would skip or repeat rows as reviews arrive under the reader.
+`(created_at, token)` — an offset would skip or repeat rows as reviews arrive under the reader.
 The cursor is an opaque base64url string of that pair; it is not a page number, and a cursor from a
 different sort or product is rejected as `VALIDATION`.
+
+**The tiebreaker is the review's `token`, not its `review_id`.** This document first said
+`review_id`, and that was wrong for a reason worth keeping written down: the cursor round-trips
+through the client, and `review_id` is an internal uuid that ADR-0016 keeps inside the process.
+"Opaque" is not secrecy — a base64url string is trivially decoded, so an internal id in a cursor is
+an internal id on the wire. `token` is already the review's public identifier, is unique, and
+orders as deterministically, so the no-skip/no-repeat guarantee is identical.
 
 Only `published` reviews are returned (SPEC-0002). **This route reads the authoritative table**, not
 the projection, which is why an author sees their own review immediately (ADR-0014).
