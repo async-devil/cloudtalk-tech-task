@@ -1,4 +1,5 @@
 import type {
+  ModerationReviewSummary,
   ProductDetail,
   ProductSummary,
   ReviewSummary,
@@ -115,6 +116,20 @@ export function reviewSummary(overrides: Partial<ReviewSummary> = {}): ReviewSum
     authoredByViewer: false,
     createdAt: '2026-09-01T00:00:00.000Z',
     updatedAt: '2026-09-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+/** TASK-0009: `reviewSummary()`'s shape plus the product context and moderation state
+ * `moderationReviewSummarySchema` adds (SPEC-0001 S8). */
+export function moderationReviewSummary(
+  overrides: Partial<ModerationReviewSummary> = {},
+): ModerationReviewSummary {
+  return {
+    ...reviewSummary(),
+    productName: 'Sony WH-1000XM5',
+    productSlug: 'sony-wh-1000xm5',
+    moderationState: 'published',
     ...overrides,
   };
 }
