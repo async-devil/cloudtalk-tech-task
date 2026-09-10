@@ -11,6 +11,8 @@
 import { Route as rootRouteImport } from './routes/__root';
 import { Route as IndexRouteImport } from './routes/index';
 import { Route as ProductsProductSlugRouteImport } from './routes/products/$productSlug';
+import { Route as ProductsProductSlugEditRouteImport } from './routes/products/$productSlug_.edit';
+import { Route as ProductsNewRouteImport } from './routes/products/new';
 import { Route as SignInRouteImport } from './routes/sign-in';
 
 const IndexRoute = IndexRouteImport.update({
@@ -28,35 +30,64 @@ const ProductsProductSlugRoute = ProductsProductSlugRouteImport.update({
   path: '/products/$productSlug',
   getParentRoute: () => rootRouteImport,
 } as any);
+const ProductsNewRoute = ProductsNewRouteImport.update({
+  id: '/products/new',
+  path: '/products/new',
+  getParentRoute: () => rootRouteImport,
+} as any);
+const ProductsProductSlugEditRoute = ProductsProductSlugEditRouteImport.update({
+  id: '/products/$productSlug_/edit',
+  path: '/products/$productSlug/edit',
+  getParentRoute: () => rootRouteImport,
+} as any);
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute;
   '/sign-in': typeof SignInRoute;
   '/products/$productSlug': typeof ProductsProductSlugRoute;
+  '/products/new': typeof ProductsNewRoute;
+  '/products/$productSlug/edit': typeof ProductsProductSlugEditRoute;
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute;
   '/sign-in': typeof SignInRoute;
   '/products/$productSlug': typeof ProductsProductSlugRoute;
+  '/products/new': typeof ProductsNewRoute;
+  '/products/$productSlug/edit': typeof ProductsProductSlugEditRoute;
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
   '/': typeof IndexRoute;
   '/sign-in': typeof SignInRoute;
   '/products/$productSlug': typeof ProductsProductSlugRoute;
+  '/products/new': typeof ProductsNewRoute;
+  '/products/$productSlug_/edit': typeof ProductsProductSlugEditRoute;
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath;
-  fullPaths: '/' | '/sign-in' | '/products/$productSlug';
+  fullPaths:
+    | '/'
+    | '/sign-in'
+    | '/products/$productSlug'
+    | '/products/new'
+    | '/products/$productSlug/edit';
   fileRoutesByTo: FileRoutesByTo;
-  to: '/' | '/sign-in' | '/products/$productSlug';
-  id: '__root__' | '/' | '/sign-in' | '/products/$productSlug';
+  to: '/' | '/sign-in' | '/products/$productSlug' | '/products/new' | '/products/$productSlug/edit';
+  id:
+    | '__root__'
+    | '/'
+    | '/sign-in'
+    | '/products/$productSlug'
+    | '/products/new'
+    | '/products/$productSlug_/edit';
   fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute;
   SignInRoute: typeof SignInRoute;
   ProductsProductSlugRoute: typeof ProductsProductSlugRoute;
+  ProductsNewRoute: typeof ProductsNewRoute;
+  ProductsProductSlugEditRoute: typeof ProductsProductSlugEditRoute;
 }
 
 declare module '@tanstack/react-router' {
@@ -82,6 +113,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProductsProductSlugRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    '/products/new': {
+      id: '/products/new';
+      path: '/products/new';
+      fullPath: '/products/new';
+      preLoaderRoute: typeof ProductsNewRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    '/products/$productSlug_/edit': {
+      id: '/products/$productSlug_/edit';
+      path: '/products/$productSlug/edit';
+      fullPath: '/products/$productSlug/edit';
+      preLoaderRoute: typeof ProductsProductSlugEditRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
   }
 }
 
@@ -89,6 +134,8 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SignInRoute: SignInRoute,
   ProductsProductSlugRoute: ProductsProductSlugRoute,
+  ProductsNewRoute: ProductsNewRoute,
+  ProductsProductSlugEditRoute: ProductsProductSlugEditRoute,
 };
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
