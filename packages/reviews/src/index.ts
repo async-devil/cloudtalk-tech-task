@@ -3,6 +3,7 @@ export { RATING_RECOMPUTE_OP, REVIEWS_OUTBOX } from './outbox.js';
 export {
   type CreateProductInput,
   createProduct,
+  deriveProductSlug,
   getProductBySlug,
   type ListProductsInput,
   listProducts,
