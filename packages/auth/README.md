@@ -3,12 +3,18 @@
 Authentication: the better-auth instance, its Elysia mount, the per-request session middleware, and
 the retention pass that purges expired credential rows. Sign-in is a magic link — ADR-0013 records
 why, and what that costs. The module holds better-auth at arm's length: every better-auth import in
-the repository lives in here, and no better-auth type crosses this barrel.
+the repository lives in here, and no better-auth type crosses this barrel. It also owns the one
+place an `auth.identity.email` is ever read for display purposes: `authorLabelsForUserIds`
+(TASK-0003) derives a review's non-identifying `authorLabel` from it, because `@repo/reviews` has
+no sanctioned edge to this schema (ADR-0001) and the email itself must never cross the wire
+(SPEC-0001 open question 1).
 
 **When NOT to use this.** Do not reach for `@repo/auth` to answer "may this user do that". It
 resolves *who is calling*, and nothing else. Authorization is a domain question — whether a review
 belongs to its author, whether a product accepts new reviews — and belongs in the bounded context
-that owns the data, filtered on `session.userId`.
+that owns the data, filtered on `session.userId`. `authorLabelsForUserIds` is not an exception to
+this: it answers "what does this author's byline read", a presentation derivation, never a
+permission.
 
 ## Public contract
 
@@ -26,6 +32,8 @@ that owns the data, filtered on `session.userId`.
 | `AUTH_SIGNUP_POSTURE`, `AUTH_SIGNUP_POSTURE_VALUES`, `AuthSignupPosture` | Open or allowlist; ships closed. |
 | `purgeExpiredAuthRows`, `startAuthRetention`, `AuthPurgeResult` | The retention pass and its scheduled wiring. |
 | `MagicLinkSendFailedError` | The typed send failure the sign-in screen keys on. |
+| `deriveAuthorLabel(email)` | The pure SPEC-0001 open-question-1 derivation: local part, trimmed, truncated to 24 chars, `'Reviewer'` fallback. Exported for anywhere the derivation alone is useful; `authorLabelsForUserIds` is the batch, DB-backed form a router actually calls. |
+| `authorLabelsForUserIds(db, userIds)` → `Map<string, string>` | Resolves `authorLabel` for a batch of `auth.app_user.app_user_id` values in one round trip (TASK-0003) — the composition-root seam `@repo/reviews`' `ReviewListItem.authorId` exists to feed. The email itself never leaves this function. |
 
 ## Dependencies
 
@@ -76,17 +84,24 @@ that owns the data, filtered on `session.userId`.
   covers `email` and `token`, and this module never logs a URL at all.
 - **INV-8** — `purgeExpiredAuthRows` refuses a horizon below its floor rather than silently
   deleting live sessions (→ `test/units.test.ts::purgeExpiredAuthRows floors`).
+- **INV-9** — `deriveAuthorLabel` never returns the email itself in any form (no `@`, no domain
+  substring), truncates to exactly 24 characters with no ellipsis, and falls back to the literal
+  `'Reviewer'` only when nothing is left after trimming the local part (SPEC-0001 open question 1)
+  (→ `test/author-label.test.ts`).
 
 ## Telemetry
 
-Source records: [ADR-0013](../../docs/adr/ADR-0013-authentication-and-security-baseline.md) and
-[ADR-0009](../../docs/adr/ADR-0009-observability-through-a-facade.md).
+Source records: [ADR-0013](../../docs/adr/ADR-0013-authentication-and-security-baseline.md),
+[ADR-0009](../../docs/adr/ADR-0009-observability-through-a-facade.md) and
+[TASK-0003](../../docs/tasks/TASK-0003-products-and-reviews-api.md).
 
 Spans:
 
 - `auth.session.resolve` — one per session resolution; carries `appUserId`, never an email.
 - `auth.retention.run` — one per retention pass over the expired credential rows.
 - `auth.user.provision-hook` — the awaited session-create hook that ensures the app-owned user row.
+- `auth.author.label` (TASK-0003) — one per `authorLabelsForUserIds` call; carries no attributes —
+  neither the emails it reads nor the ids it batches ever reach a span attribute here.
 
 Instruments:
 

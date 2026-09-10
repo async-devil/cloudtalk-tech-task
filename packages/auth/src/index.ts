@@ -2,6 +2,7 @@
 // better-auth is held at arm's length (ADR-0013): every better-auth import lives inside this
 // package, enforced by the dependency-cruiser SDK-owner rule, and no better-auth type leaks
 // through this barrel.
+export { authorLabelsForUserIds, deriveAuthorLabel } from './author-label.js';
 export { type AuthSliceConfig, authConfigSlice, parseAuthMethods } from './config-slice.js';
 export { MagicLinkSendFailedError } from './errors.js';
 export {
