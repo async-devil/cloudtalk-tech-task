@@ -25,7 +25,9 @@ function isOnboardingComplete(): boolean {
  * into the sign-in redirect.
  *
  * Only the public token leaves: `session.userToken`. The internal `userId` never appears in the
- * response (ADR-0013).
+ * response (ADR-0013). `canManageCatalogue` carries `session.catalogueManager` under its
+ * deliberately different wire name (TASK-0008, SPEC-0003) — an affordance the SPA renders on, never
+ * the authorization itself; `products.create`/`products.update` are what actually enforce it.
  */
 export function createSessionRouter() {
   const impl = implement<typeof appContract.session, HttpRequestContext>(appContract.session);
@@ -39,6 +41,7 @@ export function createSessionRouter() {
         const payload: SessionBootstrap = {
           userToken: session.userToken,
           onboardingComplete: isOnboardingComplete(),
+          canManageCatalogue: session.catalogueManager,
         };
         return payload;
       } catch (error) {

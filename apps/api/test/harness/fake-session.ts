@@ -15,6 +15,11 @@ export interface FakeResolvedSessionOptions {
   readonly identityId: string;
   readonly userId: string;
   readonly userToken: string;
+  /** `auth.app_user.catalogue_manager` (TASK-0008) — the row `resolveRequestSession`'s own query
+   * reads. Defaults to `false`: most callers of this harness are exercising review ownership, not
+   * the catalogue-authoring capability, and a fail-closed default keeps that the case unless a test
+   * opts in. */
+  readonly catalogueManager?: boolean;
   readonly respond?: FakeQueryResponder;
 }
 
@@ -31,8 +36,18 @@ export function fakeResolvedSession(options: FakeResolvedSessionOptions): FakeRe
     // `from auth.app_user` substring, which `authorLabelsForUserIds`' JOIN query also contains
     // (`FROM auth.app_user au JOIN auth.identity ai ...`) and would otherwise wrongly intercept,
     // starving that query of the `email` column its own row schema requires.
-    if (sql.toLowerCase().includes('select app_user_id, token from auth.app_user')) {
-      return { rows: [{ app_user_id: options.userId, token: options.userToken }] };
+    if (
+      sql.toLowerCase().includes('select app_user_id, token, catalogue_manager from auth.app_user')
+    ) {
+      return {
+        rows: [
+          {
+            app_user_id: options.userId,
+            token: options.userToken,
+            catalogue_manager: options.catalogueManager ?? false,
+          },
+        ],
+      };
     }
     return options.respond?.(sql, parameters) ?? { rows: [] };
   });

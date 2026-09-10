@@ -58,10 +58,11 @@ describe('createOpenApiDocument', () => {
     }
   });
 
-  // TASK-0003's own six routes (products.list/get, reviews.listForProduct/submit/update/remove) —
-  // each checked against the EXACT status codes SPEC-0003's own error table declares for it, so a
-  // route that quietly lost an error branch (or the document quietly stopped documenting one)
-  // fails here rather than only showing up as a passing "has SOME error" check.
+  // TASK-0003's own six routes (products.list/get, reviews.listForProduct/submit/update/remove),
+  // extended by TASK-0008's two (products.create/update) — each checked against the EXACT status
+  // codes SPEC-0003's own error table declares for it, so a route that quietly lost an error branch
+  // (or the document quietly stopped documenting one) fails here rather than only showing up as a
+  // passing "has SOME error" check.
   //
   // Mutation: in `packages/contracts/src/contracts/reviews/reviews.ts`, delete the `CONFLICT`
   // entry from `submit`'s `.errors({...})` — `409` disappears from
@@ -74,6 +75,16 @@ describe('createOpenApiDocument', () => {
     ['POST', '/products/{productSlug}/reviews', [400, 401, 404, 409, 429, 502, 500]],
     ['PATCH', '/reviews/{reviewToken}', [400, 401, 403, 429, 502, 500]],
     ['DELETE', '/reviews/{reviewToken}', [400, 401, 403, 502, 500]],
+    // TASK-0008: capability-gated, so UNAUTHORIZED (no session) and FORBIDDEN (session lacking
+    // catalogue_manager) both appear, same as every other write route — but neither carries
+    // RATE_LIMITED: SPEC-0003 leaves whether products.create joins a rate-limit bucket for this
+    // task to decide, and it does not (see `apps/api/src/http/security/rate-limit.ts`'s own bucket
+    // list, unextended by this task).
+    ['POST', '/products', [400, 401, 403, 409, 502, 500]],
+    // No CONFLICT: unlike `create`, `update` never touches `slug`/`sku` — the only columns whose
+    // unique constraints could collide — so nothing in its pipeline can raise it (SPEC-0003's own
+    // per-route prose lists CONFLICT for `create` only).
+    ['PATCH', '/products/{productSlug}', [400, 401, 403, 404, 502, 500]],
   ] as const)('%s %s documents exactly the error statuses SPEC-0003 declares', async (method, template, expectedStatuses) => {
     const doc = await createOpenApiDocument();
     const operation = operationFor(doc, method, template);

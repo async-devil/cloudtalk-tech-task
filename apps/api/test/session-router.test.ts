@@ -18,7 +18,11 @@ import { createSessionRouter } from '../src/routes/session/session.router.js';
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 
 function session(): RequestSession {
-  return { userId: USER_ID, userToken: 'usr_AAAAAAAAAAAAAAAAAAAAA' };
+  return {
+    userId: USER_ID,
+    userToken: 'usr_AAAAAAAAAAAAAAAAAAAAA',
+    catalogueManager: false,
+  };
 }
 
 function contextWithSession(): HttpRequestContext {
@@ -26,7 +30,7 @@ function contextWithSession(): HttpRequestContext {
 }
 
 describe('session.bootstrap', () => {
-  it('returns the public token and the onboarding flag', async () => {
+  it('returns the public token, the onboarding flag, and the catalogue-authoring affordance', async () => {
     const payload = await call(createSessionRouter().bootstrap, undefined, {
       context: contextWithSession(),
     });
@@ -34,7 +38,30 @@ describe('session.bootstrap', () => {
     expect(payload).toEqual({
       userToken: 'usr_AAAAAAAAAAAAAAAAAAAAA',
       onboardingComplete: true,
+      canManageCatalogue: false,
     });
+  });
+
+  // Mutation: in `src/routes/session/session.router.ts`'s `bootstrap` handler, change
+  // `canManageCatalogue: session.catalogueManager` to a hardcoded `false` — this test's `true`
+  // session would then wrongly report `false`, and the assertion below goes red. Proves the
+  // bootstrap payload actually forwards the resolved session's capability rather than a constant
+  // (TASK-0008, SPEC-0003: "an affordance, not an authorization" — but it still has to be the
+  // RIGHT affordance).
+  it('reports canManageCatalogue: true when the resolved session holds catalogue_manager', async () => {
+    const payload = await call(createSessionRouter().bootstrap, undefined, {
+      context: {
+        routeTemplate: '/session/bootstrap',
+        method: 'GET',
+        session: {
+          userId: USER_ID,
+          userToken: 'usr_AAAAAAAAAAAAAAAAAAAAA',
+          catalogueManager: true,
+        },
+      },
+    });
+
+    expect(payload).toMatchObject({ canManageCatalogue: true });
   });
 
   it('never lets an internal uuid cross the wire (ADR-0011)', async () => {

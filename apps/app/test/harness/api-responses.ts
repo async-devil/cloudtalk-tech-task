@@ -16,6 +16,10 @@ export function bootstrapPayload(overrides: Partial<SessionBootstrap> = {}): Ses
   return {
     userToken: 'usr_AAAAAAAAAAAAAAAAAAAAA',
     onboardingComplete: true,
+    // TASK-0008: defaults to `false` — most existing fixtures have nothing to do with the
+    // catalogue-authoring affordance, so a fail-closed default keeps them exercising the same
+    // "not a manager" case they always implicitly assumed, unless a test opts in via `overrides`.
+    canManageCatalogue: false,
     ...overrides,
   };
 }
