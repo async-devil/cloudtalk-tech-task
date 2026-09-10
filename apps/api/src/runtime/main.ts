@@ -174,13 +174,16 @@ async function main(): Promise<void> {
     everyMs: HOUR_MS,
   });
 
-  // 7b. the two HTTP-layer sliding-window limiters (Auth/UnauthenticatedPost) — a sibling
-  // connection to retention's, same Redis.
+  // 7b. the four HTTP-layer sliding-window limiters (Auth/UnauthenticatedPost/AnonymousRead/
+  // ReviewSubmission, ADR-0018 extended by ADR-0019) — a sibling connection to retention's, same
+  // Redis.
   const rateLimiters = createRateLimiters({
     connection: { redisUrl: config.messaging.REDIS_URL },
     config: {
       authPerMinute: config.api.RATE_LIMIT_AUTH_PER_MINUTE,
       unauthenticatedPostPerMinute: config.api.RATE_LIMIT_UNAUTHENTICATED_POST_PER_MINUTE,
+      anonymousReadPerMinute: config.api.RATE_LIMIT_ANONYMOUS_READ_PER_MINUTE,
+      reviewSubmissionPerMinute: config.api.RATE_LIMIT_REVIEW_SUBMISSION_PER_MINUTE,
       trustProxy: config.api.HTTP_TRUST_PROXY,
     },
   });
@@ -203,11 +206,15 @@ async function main(): Promise<void> {
   });
 
   // 8. buildApp -> listen. `session`: every session-scoped route resolves its session per-request
-  // from this same auth instance's `api` + the owner db. `mode`/`cors`/`bodyCap`/`rateLimiters`
-  // wire the ADR-0013 security baseline.
+  // from this same auth instance's `api` + the owner db. `db`: the SAME pool, handed to the
+  // `products`/`reviews` routers (TASK-0003) — one connection owns both auth's session lookups and
+  // the catalogue/review reads and writes, matching this composition root's own "one connection"
+  // stance (`0002-create-jobs-spine.ts`'s note, cited in the reviews test harness).
+  // `mode`/`cors`/`bodyCap`/`rateLimiters` wire the ADR-0013 security baseline.
   const app = buildApp({
     auth: { handler: authHandle.handler },
     session: { api: authHandle.api, db },
+    db,
     mode,
     rateLimiters,
     cors: { allowedOrigins: spaOrigins },

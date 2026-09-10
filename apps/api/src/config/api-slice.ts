@@ -14,6 +14,8 @@ const DEV_SPA_ORIGIN = 'http://localhost:5173';
  * | `HOST` | no | `0.0.0.0` |
  * | `RATE_LIMIT_AUTH_PER_MINUTE` | no | `10` fail-closed / `1000` test |
  * | `RATE_LIMIT_UNAUTHENTICATED_POST_PER_MINUTE` | no | `30` fail-closed / `3000` test |
+ * | `RATE_LIMIT_ANONYMOUS_READ_PER_MINUTE` | no | `120` fail-closed / `12000` test (ADR-0019) |
+ * | `RATE_LIMIT_REVIEW_SUBMISSION_PER_MINUTE` | no | `10` fail-closed / `1000` test (ADR-0019) |
  * | `RATE_LIMIT_MAGIC_LINK_PER_ADDRESS_PER_HOUR` | no | `5` fail-closed / `500` test |
  * | `HTTP_TRUST_PROXY` | no | `false` |
  * | `HTTP_BODY_LIMIT_BYTES` | no | `1048576` |
@@ -42,6 +44,24 @@ export const apiConfigSlice = defineConfigSlice('api', (mode) =>
         .min(1)
         .default(isFailClosed(mode) ? 30 : 3_000)
         .describe('Per-IP ceiling for a POST with no resolved session.'),
+      RATE_LIMIT_ANONYMOUS_READ_PER_MINUTE: z.coerce
+        .number()
+        .int()
+        .min(1)
+        .default(isFailClosed(mode) ? 120 : 12_000)
+        .describe(
+          'Per-IP ceiling for a GET with no resolved session (ADR-0019) — every anonymous ' +
+            'catalogue/product/review-list read.',
+        ),
+      RATE_LIMIT_REVIEW_SUBMISSION_PER_MINUTE: z.coerce
+        .number()
+        .int()
+        .min(1)
+        .default(isFailClosed(mode) ? 10 : 1_000)
+        .describe(
+          'Per-user ceiling for reviews.submit/reviews.update with a resolved session ' +
+            '(ADR-0019), keyed by the internal user id rather than client IP.',
+        ),
       RATE_LIMIT_MAGIC_LINK_PER_ADDRESS_PER_HOUR: z.coerce
         .number()
         .int()
