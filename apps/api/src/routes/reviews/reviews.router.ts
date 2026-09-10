@@ -1,7 +1,15 @@
 import { implement } from '@orpc/server';
-import { authorLabelsForUserIds, requireSession } from '@repo/auth';
-import { appContract, type ReviewSummary } from '@repo/contracts';
-import { listReviewsForProduct, removeReview, submitReview, updateReview } from '@repo/reviews';
+import { authorLabelsForUserIds, requireModerator, requireSession } from '@repo/auth';
+import { appContract, type ModerationReviewSummary, type ReviewSummary } from '@repo/contracts';
+import {
+  listReviewsForModeration,
+  listReviewsForProduct,
+  type ModerationReviewListItem,
+  removeReview,
+  setReviewModerationState,
+  submitReview,
+  updateReview,
+} from '@repo/reviews';
 import type { Kysely } from 'kysely';
 import { type HttpRequestContext, toOrpcError } from '../../http/error-mapper.js';
 import { requireDb } from '../require-db.js';
@@ -42,6 +50,32 @@ function toReviewSummary(
 async function ownAuthorLabel(db: Kysely<unknown>, userId: string): Promise<string> {
   const labels = await authorLabelsForUserIds(db, [userId]);
   return labels.get(userId) ?? AUTHOR_LABEL_FALLBACK;
+}
+
+/** `moderationList`'s row shape (`moderationReviewSummarySchema`): `reviewSummarySchema`'s fields
+ * plus the product it belongs to and its current state — built from `@repo/reviews`'s
+ * `ModerationReviewListItem` the SAME way `listForProduct`'s handler builds a plain
+ * `reviewSummarySchema` row from `ReviewListItem`, with `authorLabel` resolved from a BATCH
+ * (`authorLabelsForUserIds` called once for the whole page, mirroring `listForProduct`'s own call
+ * just below), never per row. */
+function toModerationReviewSummary(
+  item: ModerationReviewListItem,
+  authorLabel: string,
+  authoredByViewer: boolean,
+): ModerationReviewSummary {
+  return {
+    token: item.token,
+    rating: item.rating,
+    title: item.title,
+    body: item.body,
+    authorLabel,
+    authoredByViewer,
+    createdAt: item.createdAt.toISOString(),
+    updatedAt: item.updatedAt.toISOString(),
+    productName: item.productName,
+    productSlug: item.productSlug,
+    moderationState: item.moderationState,
+  };
 }
 
 /**
@@ -135,6 +169,85 @@ export function createReviewsRouter(db: Kysely<unknown> | undefined) {
           authorId: session.userId,
         });
         return { token: input.reviewToken };
+      } catch (error) {
+        throw toOrpcError(error, context);
+      }
+    }),
+
+    // moderationList/reject/restore (TASK-0009, ADR-0018, SPEC-0003): `requireModerator` runs
+    // FIRST in each handler, before `requireDb`/any `@repo/reviews` call — the identical two-tier
+    // ordering `products.router.ts`'s `create`/`update` establish for `catalogue_manager` (session
+    // required first for 401, capability checked second for 403), and the same precedent
+    // `requireSession` already sets for `submit`/`update`/`remove` above. An anonymous or
+    // under-capability caller never reaches `@repo/reviews` at all.
+    moderationList: impl.moderationList.handler(async ({ input, context }) => {
+      try {
+        requireModerator(context);
+        const activeDb = requireDb(db);
+        const viewerId = context.session?.userId;
+        const page = await listReviewsForModeration(activeDb, {
+          state: input.state,
+          limit: input.limit,
+          ...(input.cursor !== undefined ? { cursor: input.cursor } : {}),
+        });
+        // Batched the SAME way `listForProduct`'s handler batches its own page (one round trip for
+        // every reviewer on the page, never one per row) — this list spans every product, so its
+        // authors repeat even less predictably than one product's own reviewers do.
+        const labels = await authorLabelsForUserIds(
+          activeDb,
+          page.items.map((item) => item.authorId),
+        );
+        return {
+          items: page.items.map((item) =>
+            toModerationReviewSummary(
+              item,
+              labels.get(item.authorId) ?? AUTHOR_LABEL_FALLBACK,
+              item.authorId === viewerId,
+            ),
+          ),
+          nextCursor: page.nextCursor,
+        };
+      } catch (error) {
+        throw toOrpcError(error, context);
+      }
+    }),
+
+    reject: impl.reject.handler(async ({ input, context }) => {
+      try {
+        const session = requireModerator(context);
+        const activeDb = requireDb(db);
+        const result = await setReviewModerationState(activeDb, {
+          reviewToken: input.reviewToken,
+          targetState: 'rejected',
+        });
+        const labels = await authorLabelsForUserIds(activeDb, [result.authorId]);
+        return toReviewSummary(
+          result,
+          labels.get(result.authorId) ?? AUTHOR_LABEL_FALLBACK,
+          result.authorId === session.userId,
+        );
+      } catch (error) {
+        throw toOrpcError(error, context);
+      }
+    }),
+
+    // `restore` is `reject`'s exact inverse: the same handler shape, the only difference being the
+    // `targetState` passed to the SAME module function (TASK-0009's own note: "reject and restore
+    // are the same operation in reverse").
+    restore: impl.restore.handler(async ({ input, context }) => {
+      try {
+        const session = requireModerator(context);
+        const activeDb = requireDb(db);
+        const result = await setReviewModerationState(activeDb, {
+          reviewToken: input.reviewToken,
+          targetState: 'published',
+        });
+        const labels = await authorLabelsForUserIds(activeDb, [result.authorId]);
+        return toReviewSummary(
+          result,
+          labels.get(result.authorId) ?? AUTHOR_LABEL_FALLBACK,
+          result.authorId === session.userId,
+        );
       } catch (error) {
         throw toOrpcError(error, context);
       }

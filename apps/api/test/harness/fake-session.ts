@@ -20,6 +20,9 @@ export interface FakeResolvedSessionOptions {
    * the catalogue-authoring capability, and a fail-closed default keeps that the case unless a test
    * opts in. */
   readonly catalogueManager?: boolean;
+  /** `auth.app_user.moderator` (TASK-0009) — the same query's other capability column. Defaults to
+   * `false`, for the identical fail-closed reason `catalogueManager` does. */
+  readonly moderator?: boolean;
   readonly respond?: FakeQueryResponder;
 }
 
@@ -37,7 +40,9 @@ export function fakeResolvedSession(options: FakeResolvedSessionOptions): FakeRe
     // (`FROM auth.app_user au JOIN auth.identity ai ...`) and would otherwise wrongly intercept,
     // starving that query of the `email` column its own row schema requires.
     if (
-      sql.toLowerCase().includes('select app_user_id, token, catalogue_manager from auth.app_user')
+      sql
+        .toLowerCase()
+        .includes('select app_user_id, token, catalogue_manager, moderator from auth.app_user')
     ) {
       return {
         rows: [
@@ -45,6 +50,7 @@ export function fakeResolvedSession(options: FakeResolvedSessionOptions): FakeRe
             app_user_id: options.userId,
             token: options.userToken,
             catalogue_manager: options.catalogueManager ?? false,
+            moderator: options.moderator ?? false,
           },
         ],
       };

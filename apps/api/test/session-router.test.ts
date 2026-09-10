@@ -22,6 +22,7 @@ function session(): RequestSession {
     userId: USER_ID,
     userToken: 'usr_AAAAAAAAAAAAAAAAAAAAA',
     catalogueManager: false,
+    moderator: false,
   };
 }
 
@@ -39,6 +40,7 @@ describe('session.bootstrap', () => {
       userToken: 'usr_AAAAAAAAAAAAAAAAAAAAA',
       onboardingComplete: true,
       canManageCatalogue: false,
+      canModerate: false,
     });
   });
 
@@ -57,11 +59,36 @@ describe('session.bootstrap', () => {
           userId: USER_ID,
           userToken: 'usr_AAAAAAAAAAAAAAAAAAAAA',
           catalogueManager: true,
+          moderator: false,
         },
       },
     });
 
-    expect(payload).toMatchObject({ canManageCatalogue: true });
+    expect(payload).toMatchObject({ canManageCatalogue: true, canModerate: false });
+  });
+
+  // TASK-0009's own sibling proof, for the OTHER capability: the same wiring, checked in the other
+  // direction (moderator: true, catalogueManager: false) so neither field can be silently derived
+  // from the other.
+  //
+  // Mutation: in `src/routes/session/session.router.ts`'s `bootstrap` handler, change
+  // `canModerate: session.moderator` to a hardcoded `false` — this test's `true` session would then
+  // wrongly report `false`, and the assertion below goes red.
+  it('reports canModerate: true when the resolved session holds moderator', async () => {
+    const payload = await call(createSessionRouter().bootstrap, undefined, {
+      context: {
+        routeTemplate: '/session/bootstrap',
+        method: 'GET',
+        session: {
+          userId: USER_ID,
+          userToken: 'usr_AAAAAAAAAAAAAAAAAAAAA',
+          catalogueManager: false,
+          moderator: true,
+        },
+      },
+    });
+
+    expect(payload).toMatchObject({ canManageCatalogue: false, canModerate: true });
   });
 
   it('never lets an internal uuid cross the wire (ADR-0011)', async () => {

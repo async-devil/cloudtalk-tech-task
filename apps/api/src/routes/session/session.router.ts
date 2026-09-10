@@ -28,6 +28,8 @@ function isOnboardingComplete(): boolean {
  * response (ADR-0013). `canManageCatalogue` carries `session.catalogueManager` under its
  * deliberately different wire name (TASK-0008, SPEC-0003) — an affordance the SPA renders on, never
  * the authorization itself; `products.create`/`products.update` are what actually enforce it.
+ * `canModerate` carries `session.moderator` the same way (TASK-0009): `reviews.moderationList`/
+ * `reject`/`restore` are what actually enforce that one.
  */
 export function createSessionRouter() {
   const impl = implement<typeof appContract.session, HttpRequestContext>(appContract.session);
@@ -42,6 +44,7 @@ export function createSessionRouter() {
           userToken: session.userToken,
           onboardingComplete: isOnboardingComplete(),
           canManageCatalogue: session.catalogueManager,
+          canModerate: session.moderator,
         };
         return payload;
       } catch (error) {
