@@ -16,16 +16,49 @@ import { translateUniqueViolation } from './internal/unique-violation.js';
 
 export type { UpdateProductInput };
 
-/** `createProduct`'s input (SPEC-0002/SPEC-0003). Every field is required — a product is created
- * whole, never in stages. */
+/** `createProduct`'s input (SPEC-0002/SPEC-0003). Every field is required except `slug`: a product
+ * is created whole, never in stages, and `slug` is the one field with a server-side default —
+ * omitted, {@link deriveProductSlug} mints it from `name`; supplied, it is used verbatim after the
+ * wire schema's own format/length validation (TASK-0008, SPEC-0003). */
 export interface CreateProductInput {
-  readonly slug: string;
+  readonly slug?: string;
   readonly sku: string;
   readonly name: string;
   readonly description: string;
-  readonly categoryName: ProductCategoryName;
+  /** A wire-sourced category name (TASK-0008) — `string`, not the closed `ProductCategoryName`
+   * union: `productCategoryIdFor` is this function's own parse boundary for it, exactly as it
+   * already is for `updateProduct`'s `categoryName` and for `listProducts`'s `category` filter. */
+  readonly categoryName: string;
   readonly priceMinor: number;
   readonly currencyCode: string;
+}
+
+const NON_ALPHANUMERIC_RUN_RE = /[^a-z0-9]+/g;
+const LEADING_OR_TRAILING_HYPHENS_RE = /^-+|-+$/g;
+/** Mirrors `reviews.product`'s `ck_product__slug_length` upper bound (SPEC-0002) — a derived slug
+ * must satisfy the same row it is about to be written into. */
+const MAX_DERIVED_SLUG_LENGTH = 80;
+
+/**
+ * Derives a product's slug from its `name` when a caller omits one on creation (SPEC-0003,
+ * SPEC-0001 screen S7's slug preview, TASK-0008): lowercased, every run of one-or-more
+ * non-alphanumeric characters collapsed to a single hyphen, leading/trailing hyphens trimmed, then
+ * trimmed again to {@link MAX_DERIVED_SLUG_LENGTH} characters — trimming twice because a hyphen run
+ * can land exactly on the length boundary and reappear as a dangling trailing hyphen once the cut
+ * lands mid-run. The result satisfies `productSlugSchema`'s format exactly (mirrors
+ * `ck_product__slug_format`), so a derived slug never fails its own row's `CHECK`.
+ *
+ * Domain logic, not HTTP logic, on purpose — SPEC-0003's own words: "derivation happens server-side
+ * even though the form previews it; a client-side slug is a suggestion, never the value." The
+ * pipeline is what decides the value; the router only calls it (TASK-0008).
+ */
+export function deriveProductSlug(name: string): string {
+  const collapsed = name
+    .trim()
+    .toLowerCase()
+    .replace(NON_ALPHANUMERIC_RUN_RE, '-')
+    .replace(LEADING_OR_TRAILING_HYPHENS_RE, '');
+  return collapsed.slice(0, MAX_DERIVED_SLUG_LENGTH).replace(LEADING_OR_TRAILING_HYPHENS_RE, '');
 }
 
 /** The catalogue's public product shape. No `product_id` (ADR-0016: no internal uuid crosses this
@@ -73,12 +106,13 @@ export function createProduct(
   input: CreateProductInput,
 ): Promise<ProductRecord> {
   return obs.withSpan('reviews.product.create', async () => {
+    const slug = input.slug ?? deriveProductSlug(input.name);
     try {
       const result = await sql`
         INSERT INTO reviews.product
           (slug, sku, name, description, product_category_id, price_minor, currency_code)
         VALUES (
-          ${input.slug}, ${input.sku}, ${input.name}, ${input.description},
+          ${slug}, ${input.sku}, ${input.name}, ${input.description},
           ${productCategoryIdFor(input.categoryName)}, ${input.priceMinor}, ${input.currencyCode}
         )
         RETURNING slug, sku, name, description, product_category_id, price_minor, currency_code,

@@ -1,15 +1,16 @@
-import type { ProductCategoryName } from '@repo/entities';
 import { ValidationError } from '@repo/kernel';
 import { productCategoryIdFor } from './reference-ids.js';
 
 /** The wire shape `updateProduct` accepts (SPEC-0003): every field but the address key is
  * optional — a caller supplies only what changed. `productSlug`, not `slug`, addresses the row,
- * precisely so the addressing field can never trip this file's own immutability guard. */
+ * precisely so the addressing field can never trip this file's own immutability guard.
+ * `categoryName` is a wire-sourced `string` (TASK-0008), not the closed `ProductCategoryName`
+ * union — `productCategoryIdFor` below is its parse boundary. */
 export interface UpdateProductInput {
   readonly productSlug: string;
   readonly name?: string;
   readonly description?: string;
-  readonly categoryName?: ProductCategoryName;
+  readonly categoryName?: string;
   readonly priceMinor?: number;
   readonly currencyCode?: string;
 }

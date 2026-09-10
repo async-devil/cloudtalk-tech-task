@@ -16,7 +16,12 @@ import { InternalError, ValidationError } from '@repo/kernel';
 // is what keeps the two one thing. The reverse direction (id -> name) reads a row this module's
 // own INSERT/UPDATE/SELECT just returned, so a miss there is schema drift, never a caller's fault.
 
-const PRODUCT_CATEGORY_ID_BY_NAME = new Map<ProductCategoryName, ProductCategoryId>(
+// Keyed by plain `string`, not `ProductCategoryName`: {@link productCategoryIdFor} is itself the
+// narrow-or-throw boundary for a wire-sourced category name (TASK-0008's `products.create`/
+// `products.update`, alongside `listProducts`'s pre-narrowed `isProductCategoryName` call) — a
+// `Map<ProductCategoryName, _>` would force every caller to already hold the narrow type before
+// calling the very function that validates it.
+const PRODUCT_CATEGORY_ID_BY_NAME = new Map<string, ProductCategoryId>(
   Object.values(PRODUCT_CATEGORY).map((category) => [category.name, category.id]),
 );
 const PRODUCT_CATEGORY_NAME_BY_ID = new Map<number, ProductCategoryName>(
@@ -31,9 +36,17 @@ const REVIEW_MODERATION_STATE_NAME_BY_ID = new Map<number, ReviewModerationState
  * never a join on `reference.product_category.name`. `createProduct`/`updateProduct`'s write path
  * needs no round trip to resolve it; `fk_product__product_category` is the backstop if this ever
  * disagreed with the seeded rows.
+ *
+ * Typed `categoryName: string`, not `ProductCategoryName`, ON PURPOSE (TASK-0008): this function
+ * IS the parse boundary between an arbitrary wire-sourced string and the closed vocabulary — a
+ * narrower parameter type would force every caller to already hold a `ProductCategoryName` before
+ * calling the one function that proves a value is one, which is backwards for a boundary check.
+ * `listProducts` still narrows first via `isProductCategoryName` — not for this function's type
+ * signature, but because its own `category` query parameter needs a different `details.field` than
+ * this function's default `'categoryName'` on the thrown error.
  * @throws ValidationError when `categoryName` names no seeded category.
  */
-export function productCategoryIdFor(categoryName: ProductCategoryName): ProductCategoryId {
+export function productCategoryIdFor(categoryName: string): ProductCategoryId {
   const id = PRODUCT_CATEGORY_ID_BY_NAME.get(categoryName);
   if (id === undefined) {
     throw new ValidationError(`unknown product category "${categoryName}"`, {

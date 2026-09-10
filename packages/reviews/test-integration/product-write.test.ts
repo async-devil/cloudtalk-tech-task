@@ -1,7 +1,13 @@
+import { PRODUCT_CATEGORY } from '@repo/entities';
 import { ConflictError, NotFoundError, ValidationError } from '@repo/kernel';
 import { type Kysely, sql } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { type UpdateProductInput, updateProduct } from '../src/index.js';
+import {
+  createProduct,
+  deriveProductSlug,
+  type UpdateProductInput,
+  updateProduct,
+} from '../src/index.js';
 import {
   createTestProduct,
   type ReviewsTestInfra,
@@ -147,5 +153,102 @@ describe('createProduct / updateProduct (TASK-0002, SPEC-0002, SPEC-0004)', () =
     await expect(
       updateProduct(infra.db, { productSlug: 'does-not-exist-anywhere', name: 'x' }),
     ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  // Mutation: in `src/internal/product-update-input.ts`'s `productUpdateBindsFor`, move the
+  // `'slug' in input` guard to run AFTER `updateProduct`'s `UPDATE` statement instead of before it
+  // — same reasoning as the `sku` test above (TASK-0002), extended to `slug` (TASK-0008): the
+  // byte-identical assertion is what proves the guard runs before any write, not merely that it
+  // eventually throws.
+  it('updateProduct carrying slug throws ValidationError and leaves the stored row byte-identical, updated_at included', async () => {
+    const product = await createTestProduct(infra.db);
+    const before = await fetchProductRow(infra.db, product.slug);
+
+    const wireBody = {
+      productSlug: product.slug,
+      name: 'New name from the wire',
+      slug: 'a-completely-different-slug',
+    };
+
+    let caught: unknown;
+    try {
+      await updateProduct(infra.db, wireBody);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(ValidationError);
+    expect((caught as ValidationError).details).toEqual({ field: 'slug' });
+
+    const after = await fetchProductRow(infra.db, product.slug);
+    expect(after).toStrictEqual(before);
+  });
+});
+
+describe('createProduct: server-side slug derivation (TASK-0008, SPEC-0003)', () => {
+  let infra: ReviewsTestInfra;
+
+  beforeAll(async () => {
+    infra = await startReviewsTestInfra();
+  }, 180_000);
+
+  afterAll(async () => {
+    await infra.stop();
+  }, 60_000);
+
+  function uniqueSuffix(): string {
+    return crypto.randomUUID().replace(/-/g, '').slice(0, 12);
+  }
+
+  // Mutation: in `src/products.ts`'s `createProduct`, change
+  // `const slug = input.slug ?? deriveProductSlug(input.name);` to always call
+  // `deriveProductSlug(input.name)` regardless of a supplied `slug` — this test would still pass
+  // (derivation from name never runs a caller-visible check here), but the SIBLING "verbatim" test
+  // below goes red, since the stored row's slug would then never match the caller-supplied value.
+  // Asserted against the REAL persisted row, not just `createProduct`'s return value, so a
+  // derivation that only LOOKS right in the returned record (but never made it into the `INSERT`)
+  // would still be caught.
+  it('derives the slug from name when omitted, and the real stored row carries that derivation', async () => {
+    const tag = uniqueSuffix();
+    const name = `Sony  WH-1000XM5!!  ${tag}`;
+    const expectedSlug = deriveProductSlug(name);
+
+    const product = await createProduct(infra.db, {
+      sku: `TEST-DERIVE-${tag.toUpperCase()}`,
+      name,
+      description: 'A product created to prove server-side slug derivation.',
+      categoryName: PRODUCT_CATEGORY.Audio.name,
+      priceMinor: 1999,
+      currencyCode: 'USD',
+      // slug deliberately omitted
+    });
+
+    expect(product.slug).toBe(expectedSlug);
+    const row = await fetchProductRow(infra.db, expectedSlug);
+    expect(row.slug).toBe(expectedSlug);
+  });
+
+  // Mutation: in `src/products.ts`'s `createProduct`, change
+  // `const slug = input.slug ?? deriveProductSlug(input.name);` to
+  // `const slug = deriveProductSlug(input.name);` (drop the `input.slug ??` half) — a supplied
+  // slug would be silently discarded in favour of a fresh derivation from `name`, and this test's
+  // equality assertion goes red because the two never match here on purpose (the name derives to
+  // something else entirely).
+  it('uses a supplied slug verbatim, never re-deriving it from name', async () => {
+    const tag = uniqueSuffix();
+    const suppliedSlug = `custom-slug-${tag}`;
+
+    const product = await createProduct(infra.db, {
+      sku: `TEST-VERBATIM-${tag.toUpperCase()}`,
+      name: `A Totally Unrelated Product Name ${tag}`,
+      description: 'A product created to prove a supplied slug is used verbatim.',
+      categoryName: PRODUCT_CATEGORY.Audio.name,
+      priceMinor: 1999,
+      currencyCode: 'USD',
+      slug: suppliedSlug,
+    });
+
+    expect(product.slug).toBe(suppliedSlug);
+    const row = await fetchProductRow(infra.db, suppliedSlug);
+    expect(row.slug).toBe(suppliedSlug);
   });
 });
