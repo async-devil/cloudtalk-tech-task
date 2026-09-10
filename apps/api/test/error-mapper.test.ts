@@ -303,15 +303,13 @@ describe('errorResponseFor (finding #4): session-resolution throws are mapped AN
   it('a resolveRequestSession throw becomes an in-band 403 (not a mount-onError fallthrough)', async () => {
     // The mounted oRPC handler resolves the session BEFORE any handler runs (http/index.ts), so a
     // no-membership ForbiddenError would otherwise bypass this observed boundary. A session dep
-    // whose getSession throws stands in for that throw — the unit under test is the boundary, not
-    // resolveActiveTenant (which has its own container proof).
+    // whose getSession throws stands in for that throw — the unit under test is this boundary,
+    // not resolveRequestSession's own lookup logic.
     const deps: HttpHandlerDeps = {
-      ...{},
       session: {
         api: { getSession: () => Promise.reject(new ForbiddenError('no membership')) },
         db: {} as never,
-        resolveActiveTenant: (() => Promise.reject(new Error('unused'))) as never,
-      } as unknown as HttpHandlerDeps['session'],
+      },
     };
     const handler = createHttpHandler(deps);
     const capture = captureStdout();

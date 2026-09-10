@@ -32,7 +32,7 @@ async function main(): Promise<void> {
     data: { revision: 2 },
   });
 
-  const url = new URL(redisUrl);
+  const url = new URL(connection.redisUrl);
   const queue = new Queue(stage, { connection: { host: url.hostname, port: Number(url.port) } });
   try {
     const schedulers = await queue.getJobSchedulers();
