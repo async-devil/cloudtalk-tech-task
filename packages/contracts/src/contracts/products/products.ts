@@ -76,6 +76,65 @@ export const productDetailSchema = productSummarySchema.extend({
 });
 export type ProductDetail = z.infer<typeof productDetailSchema>;
 
+/**
+ * `products.create`'s input (SPEC-0003, SPEC-0001 screen S7): every field a product is created
+ * whole with, `slug` the one exception — omitted, it is derived server-side from `name`; supplied,
+ * it is used verbatim after this schema validates its shape (TASK-0008's own words: "derivation
+ * happens server-side even though the form previews it; a client-side slug is a suggestion, never
+ * the value").
+ */
+const productsCreateInputSchema = z.object({
+  /** Mirrors `ck_product__name_not_empty`. */
+  name: z.string().min(1),
+  description: z.string().min(1),
+  /** Validated against the closed `PRODUCT_CATEGORY` vocabulary by the pipeline
+   * (`productCategoryIdFor`), which throws `VALIDATION({ field: 'categoryName' })` for an
+   * unrecognised name — no stronger bound is invented here than `productSummarySchema.categoryName`
+   * already carries. */
+  categoryName: z.string(),
+  priceMinor: z.number().int().nonnegative(),
+  currencyCode: z.string().regex(/^[A-Z]{3}$/),
+  sku: skuSchema,
+  slug: productSlugSchema.optional(),
+});
+
+/**
+ * `products.update`'s input (SPEC-0003): every mutable field optional, `.refine`d to require at
+ * least one (the same "at least one field present" shape `reviewUpdateInputSchema` establishes),
+ * over a `.strict()` base — **`slug` and `sku` are deliberately absent from this object entirely**,
+ * so a request carrying either fails Zod's own unrecognised-key rejection (`VALIDATION`) at the wire
+ * boundary, before any handler code runs, rather than reaching the pipeline to be silently dropped
+ * or requiring a runtime `'slug' in input` check here to catch what the type already forbids. The
+ * pipeline's own guard (`productUpdateBindsFor`) still exists and is still tested — this is the
+ * second, wire-level half of the same rule (SPEC-0002's immutability note: "worth exactly as much
+ * as the test that proves it").
+ */
+const productsUpdateInputSchema = z
+  .object({
+    productSlug: productSlugSchema,
+    name: z.string().min(1).optional(),
+    description: z.string().min(1).optional(),
+    categoryName: z.string().optional(),
+    priceMinor: z.number().int().nonnegative().optional(),
+    currencyCode: z
+      .string()
+      .regex(/^[A-Z]{3}$/)
+      .optional(),
+  })
+  .strict()
+  .refine(
+    (input) =>
+      input.name !== undefined ||
+      input.description !== undefined ||
+      input.categoryName !== undefined ||
+      input.priceMinor !== undefined ||
+      input.currencyCode !== undefined,
+    {
+      message:
+        'At least one of name, description, categoryName, priceMinor or currencyCode must be provided.',
+    },
+  );
+
 const productsListInputSchema = z.object({
   /** Case-insensitive substring match on product **name or SKU** (SPEC-0003) — pasting a SKU finds
    * its product. */
@@ -145,6 +204,96 @@ export const productsContract = oc.router({
       RATE_LIMITED: {
         status: 429,
         message: 'Too many requests.',
+        data: apiErrorShape,
+      },
+      PROVIDER: {
+        status: 502,
+        message: 'An upstream provider failed.',
+        data: apiErrorShape,
+      },
+      INTERNAL: {
+        status: 500,
+        message: 'An internal error occurred.',
+        data: apiErrorShape,
+      },
+    }),
+
+  /**
+   * Requires the `catalogue_manager` capability (ADR-0018, SPEC-0003) — strictly stronger than the
+   * plain "session required" `reviews.submit` etc. mark above: no session is `UNAUTHORIZED` (401),
+   * exactly like those routes, but a resolved session whose user does not hold the capability is
+   * `FORBIDDEN` (403) rather than being let through. TASK-0008's own acceptance criterion: both are
+   * asserted at the HTTP layer, never against the guard in isolation.
+   */
+  create: oc
+    .route({ method: 'POST', path: '/products' })
+    .input(productsCreateInputSchema)
+    .output(productDetailSchema)
+    .errors({
+      VALIDATION: {
+        status: 400,
+        message: 'The request was invalid.',
+        data: apiErrorShape,
+      },
+      UNAUTHORIZED: {
+        status: 401,
+        message: 'A resolved session is required.',
+        data: apiErrorShape,
+      },
+      FORBIDDEN: {
+        status: 403,
+        message: 'This session does not hold the catalogue_manager capability.',
+        data: apiErrorShape,
+      },
+      /** A colliding slug or sku, caught from the unique constraint's typed translation — never a
+       * pre-flight read that could race (SPEC-0003). `details.field` names which one. */
+      CONFLICT: {
+        status: 409,
+        message: 'A product with this slug or sku already exists.',
+        data: apiErrorShape,
+      },
+      PROVIDER: {
+        status: 502,
+        message: 'An upstream provider failed.',
+        data: apiErrorShape,
+      },
+      INTERNAL: {
+        status: 500,
+        message: 'An internal error occurred.',
+        data: apiErrorShape,
+      },
+    }),
+
+  /**
+   * Requires the `catalogue_manager` capability, same shape as `create` above. No `CONFLICT` here:
+   * unlike `create`, this route never touches `slug`/`sku` — SPEC-0003's own words, "slug and sku
+   * are not editable" — so the columns whose unique constraints could collide are never part of
+   * this statement's `SET` list, and sending either field at all is rejected by the wire schema
+   * itself as `VALIDATION`, before this route's pipeline runs.
+   */
+  update: oc
+    .route({ method: 'PATCH', path: '/products/{productSlug}' })
+    .input(productsUpdateInputSchema)
+    .output(productDetailSchema)
+    .errors({
+      VALIDATION: {
+        status: 400,
+        message: 'The request was invalid.',
+        data: apiErrorShape,
+      },
+      UNAUTHORIZED: {
+        status: 401,
+        message: 'A resolved session is required.',
+        data: apiErrorShape,
+      },
+      FORBIDDEN: {
+        status: 403,
+        message: 'This session does not hold the catalogue_manager capability.',
+        data: apiErrorShape,
+      },
+      NOT_FOUND: {
+        status: 404,
+        message: 'No product exists at this slug.',
         data: apiErrorShape,
       },
       PROVIDER: {
