@@ -13,6 +13,15 @@ import { queryKeys } from '../query-keys/index.js';
  */
 export interface SessionState {
   readonly userToken: string;
+  /**
+   * `SessionBootstrap.canManageCatalogue` (TASK-0008, SPEC-0003): whether this session may create
+   * and edit catalogue products. Surfaced here so the `catalogue`/`product-detail` screens can gate
+   * their manager entry points on it — a COURTESY gate only: the server's own `catalogue_manager`
+   * capability guard (`@repo/auth`'s `requireCatalogueManager`) is the actual security boundary and
+   * refuses the write regardless of what this field says (SPEC-0001's own note: "if they ever
+   * disagree, the server is right").
+   */
+  readonly canManageCatalogue: boolean;
 }
 
 /**
@@ -66,5 +75,6 @@ export function useSession(): SessionState | undefined {
   }
   return {
     userToken: data.userToken,
+    canManageCatalogue: data.canManageCatalogue,
   };
 }
