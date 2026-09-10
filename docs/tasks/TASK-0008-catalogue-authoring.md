@@ -1,7 +1,7 @@
 ---
 id: TASK-0008
 title: Catalogue authoring — product creation and editing behind a capability
-status: ready
+status: done
 adr: [ADR-0016, ADR-0018]
 date: 2026-09-09
 ---
@@ -25,26 +25,26 @@ Product deletion or retirement. A screen for granting the capability — it is s
 
 ## Acceptance criteria
 
-- [ ] `auth.app_user.catalogue_manager` exists as `boolean NOT NULL DEFAULT false`, added by its own
+- [x] `auth.app_user.catalogue_manager` exists as `boolean NOT NULL DEFAULT false`, added by its own
       migration rather than an edit to a merged one.
-- [ ] `products.create` and `products.update` are declared in the contract before they are
+- [x] `products.create` and `products.update` are declared in the contract before they are
       implemented, and appear in the generated OpenAPI document with their error shapes.
-- [ ] A request with no session receives 401; a request with a session lacking the capability
+- [x] A request with no session receives 401; a request with a session lacking the capability
       receives 403. Both are asserted against the HTTP layer, not against the guard in isolation.
-- [ ] Removing the capability check from the router turns a test red.
-- [ ] A slug omitted on creation is derived from the name server-side; a slug supplied on creation is
+- [x] Removing the capability check from the router turns a test red.
+- [x] A slug omitted on creation is derived from the name server-side; a slug supplied on creation is
       used verbatim after validation.
-- [ ] A duplicate slug and a duplicate SKU each return `CONFLICT` with `details.field` naming which,
+- [x] A duplicate slug and a duplicate SKU each return `CONFLICT` with `details.field` naming which,
       raised from the unique constraint rather than from a pre-flight read.
-- [ ] `products.update` rejects `slug` and `sku` with `VALIDATION`; neither is silently ignored, and
+- [x] `products.update` rejects `slug` and `sku` with `VALIDATION`; neither is silently ignored, and
       a test asserts the stored row is unchanged after such a request.
-- [ ] A created product is immediately readable at `/products/{slug}` and appears in the catalogue
+- [x] A created product is immediately readable at `/products/{slug}` and appears in the catalogue
       list with no rating and no `computedAt`, with no `product_rating` row written.
-- [ ] The SPA renders the authoring entry points only when `canManageCatalogue` is true, and the
+- [x] The SPA renders the authoring entry points only when `canManageCatalogue` is true, and the
       product form is operable by keyboard alone with its slug preview announced.
-- [ ] A Playwright spec covers: sign in as the seeded manager, create a product, see it in the
+- [x] A Playwright spec covers: sign in as the seeded manager, create a product, see it in the
       catalogue, edit its name, and confirm the address did not change.
-- [ ] `bun run extract-module reviews` still passes.
+- [x] `bun run extract-module reviews` still passes.
 
 ## Notes
 
