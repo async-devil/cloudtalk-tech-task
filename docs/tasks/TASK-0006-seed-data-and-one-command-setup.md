@@ -1,7 +1,7 @@
 ---
 id: TASK-0006
 title: Seed data and a one-command local setup
-status: draft
+status: ready
 adr: [ADR-0005]
 date: 2026-09-08
 ---
