@@ -86,6 +86,47 @@ const reviewRemoveInputSchema = z.object({
 });
 
 /**
+ * A review's moderation state as it ever appears on the wire (SPEC-0002, ADR-0018): `pending` is
+ * seeded but written by nothing in v1 (reserved for a future reporting flow) and is therefore never
+ * a value this contract accepts or returns — only the two states a moderator can ever choose
+ * between.
+ */
+export const moderationStateSchema = z.enum(['published', 'rejected']);
+
+/**
+ * One review as `reviews.moderationList` hands it back (SPEC-0001 S8, SPEC-0003) —
+ * `reviewSummarySchema`'s shape plus the product it belongs to and its current moderation state, so
+ * the moderation screen needs no second call per row to say which product a review is on. Unlike
+ * every other review-bearing shape in this namespace, this one is NOT scoped to `published`
+ * reviews: it is the one contract shape that describes a review regardless of its state.
+ */
+export const moderationReviewSummarySchema = reviewSummarySchema.extend({
+  productName: z.string().min(1),
+  productSlug: productSlugSchema,
+  moderationState: moderationStateSchema,
+});
+export type ModerationReviewSummary = z.infer<typeof moderationReviewSummarySchema>;
+
+const reviewsModerationListInputSchema = z.object({
+  /** Defaults to `'published'` — the working set a moderator reviews (SPEC-0001 S8: "a state
+   * filter defaulting to published"). `'rejected'` is available to check past decisions; there is
+   * no "every state" option; a moderator always sees exactly one state at a time. */
+  state: moderationStateSchema.default('published'),
+  /** Opaque keyset cursor on `(created_at, token)`, newest first, scoped to the requested `state`
+   * the same way `reviews.listForProduct`'s cursor is scoped to its product — a cursor minted under
+   * one state filter is rejected as `VALIDATION` against the other, never silently honoured. */
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+});
+
+/** `reviews.reject`/`reviews.restore` share this input shape: a moderator names only the review, never
+ * the state it should end up in — that is fixed by which of the two procedures is called
+ * (SPEC-0003: "'reject'/'restore' are the verbs, not a field flip a client could get backwards"). */
+const reviewModerationActionInputSchema = z.object({
+  reviewToken: reviewTokenSchema,
+});
+
+/**
  * A product's reviews: one anonymous read and the three writes a signed-in reviewer owns
  * (SPEC-0003). `listForProduct` reads `reviews.review` directly — the authoritative table, not the
  * rating projection `products.list`/`products.get` read (ADR-0014) — which is the split TASK-0003
@@ -234,6 +275,155 @@ export const reviewsContract = oc.router({
       FORBIDDEN: {
         status: 403,
         message: 'This session does not own that review.',
+        data: apiErrorShape,
+      },
+      PROVIDER: {
+        status: 502,
+        message: 'An upstream provider failed.',
+        data: apiErrorShape,
+      },
+      INTERNAL: {
+        status: 500,
+        message: 'An internal error occurred.',
+        data: apiErrorShape,
+      },
+    }),
+
+  /**
+   * Requires the `moderator` capability (ADR-0018, SPEC-0003, TASK-0009) — the same two-tier shape
+   * `products.create`/`products.update` establish for `catalogue_manager`: no session is
+   * `UNAUTHORIZED` (401), a resolved session that does not hold `moderator` — including one that
+   * holds only `catalogue_manager` — is `FORBIDDEN` (403).
+   *
+   * **The one route in this contract that reads a review regardless of its moderation state**
+   * (SPEC-0003): every other read here is scoped to `published` (rule 11); this one deliberately is
+   * not, which is exactly why it needs the capability gate every other read in this namespace does
+   * without. Not scoped to one product either — it lists across the whole catalogue — so there is
+   * no `NOT_FOUND` on this route: an unrecognised `productSlug` cannot happen because none is
+   * accepted, and an empty result for a given `state` is a normal, successful page, not a failure.
+   */
+  moderationList: oc
+    .route({ method: 'GET', path: '/moderation/reviews' })
+    .input(reviewsModerationListInputSchema)
+    .output(pageOf(moderationReviewSummarySchema))
+    .errors({
+      VALIDATION: {
+        status: 400,
+        message: 'The request was invalid.',
+        data: apiErrorShape,
+      },
+      UNAUTHORIZED: {
+        status: 401,
+        message: 'A resolved session is required.',
+        data: apiErrorShape,
+      },
+      FORBIDDEN: {
+        status: 403,
+        message: 'This session does not hold the moderator capability.',
+        data: apiErrorShape,
+      },
+      RATE_LIMITED: {
+        status: 429,
+        message: 'Too many requests.',
+        data: apiErrorShape,
+      },
+      PROVIDER: {
+        status: 502,
+        message: 'An upstream provider failed.',
+        data: apiErrorShape,
+      },
+      INTERNAL: {
+        status: 500,
+        message: 'An internal error occurred.',
+        data: apiErrorShape,
+      },
+    }),
+
+  /**
+   * Moves a `published` review to `rejected` (ADR-0018, SPEC-0001 rules 9-12, TASK-0009). Requires
+   * `moderator` — a DIFFERENT 403 than `update`'s (that one means "not your review"; this one means
+   * "no moderation capability at all", and a moderator acts on ANY review, never only their own).
+   *
+   * **`NOT_FOUND` on an unknown token, unlike `update`/`remove`'s ownership-oracle `FORBIDDEN`.**
+   * `update`/`remove` collapse "wrong owner" and "no such review" into one answer because telling
+   * them apart would let a caller probe for the existence of someone else's review (SPEC-0001 rule
+   * 5). That concern does not apply here: this route has no ownership dimension to hide behind —
+   * a moderator with the capability may already see any review through `moderationList`, so
+   * confirming a token does not exist reveals nothing an existence oracle could exploit, and is the
+   * more honest, more useful answer for a moderation tool (SPEC-0003 states this directly: "Unknown
+   * token → `NOT_FOUND`").
+   *
+   * Rejecting an already-`rejected` review is a no-op: it returns the current row rather than an
+   * error, idempotent by the same reasoning `reviews.submit`'s deterministic id is (SPEC-0004).
+   * Output is `reviewSummarySchema`, not `moderationReviewSummarySchema`: SPEC-0003's own route
+   * table names it, and a caller acting on one review by its token already has the product context
+   * it came from (`moderationList`'s row, or the product screen) — repeating `productName`/
+   * `productSlug` back would be dead weight on the one shape every other review mutation
+   * (`submit`/`update`) already returns.
+   */
+  reject: oc
+    .route({ method: 'POST', path: '/reviews/{reviewToken}/reject' })
+    .input(reviewModerationActionInputSchema)
+    .output(reviewSummarySchema)
+    .errors({
+      VALIDATION: {
+        status: 400,
+        message: 'The request was invalid.',
+        data: apiErrorShape,
+      },
+      UNAUTHORIZED: {
+        status: 401,
+        message: 'A resolved session is required.',
+        data: apiErrorShape,
+      },
+      FORBIDDEN: {
+        status: 403,
+        message: 'This session does not hold the moderator capability.',
+        data: apiErrorShape,
+      },
+      NOT_FOUND: {
+        status: 404,
+        message: 'No review exists with this token.',
+        data: apiErrorShape,
+      },
+      PROVIDER: {
+        status: 502,
+        message: 'An upstream provider failed.',
+        data: apiErrorShape,
+      },
+      INTERNAL: {
+        status: 500,
+        message: 'An internal error occurred.',
+        data: apiErrorShape,
+      },
+    }),
+
+  /** Moves a `rejected` review back to `published` — `reject`'s exact inverse, same input/output/
+   * error shape, same `NOT_FOUND`-on-unknown-token reasoning, same no-op-when-already-there
+   * idempotence (an already-`published` review restored again returns the current row). */
+  restore: oc
+    .route({ method: 'POST', path: '/reviews/{reviewToken}/restore' })
+    .input(reviewModerationActionInputSchema)
+    .output(reviewSummarySchema)
+    .errors({
+      VALIDATION: {
+        status: 400,
+        message: 'The request was invalid.',
+        data: apiErrorShape,
+      },
+      UNAUTHORIZED: {
+        status: 401,
+        message: 'A resolved session is required.',
+        data: apiErrorShape,
+      },
+      FORBIDDEN: {
+        status: 403,
+        message: 'This session does not hold the moderator capability.',
+        data: apiErrorShape,
+      },
+      NOT_FOUND: {
+        status: 404,
+        message: 'No review exists with this token.',
         data: apiErrorShape,
       },
       PROVIDER: {

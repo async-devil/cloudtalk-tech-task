@@ -27,6 +27,16 @@ export const sessionBootstrapSchema = z.object({
    * `products.update` refuse the write regardless of what this field said (ADR-0018, SPEC-0003).
    */
   canManageCatalogue: z.boolean(),
+  /**
+   * Whether the SPA should render the moderation entry point and screen — the moderation review
+   * list and its reject/restore actions (SPEC-0001 screen S8, TASK-0009). The identical affordance
+   * convention `canManageCatalogue` sets, for the OTHER capability: this says what the client may
+   * SHOW, never what the row stores — `auth.app_user.moderator` is the source of truth, named
+   * differently here so this payload is never mistaken for it. `reviews.reject`/`reviews.restore`/
+   * `reviews.moderationList` refuse the request regardless of what this field said (ADR-0018,
+   * SPEC-0003). Independent of `canManageCatalogue`: holding one implies nothing about the other.
+   */
+  canModerate: z.boolean(),
 });
 export type SessionBootstrap = z.infer<typeof sessionBootstrapSchema>;
 
