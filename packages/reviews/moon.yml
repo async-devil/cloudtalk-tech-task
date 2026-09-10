@@ -3,9 +3,26 @@ layer: library
 
 # test-integration is package-local (Testcontainers postgres:18) and proves TASK-0002's container
 # criteria — the outbox invariant on submitReview, idempotent replay, and the drop-and-rebuild
-# proof for reviews.product_rating — written by another engineer against this package's
-# vitest.integration.config.ts. The workspace-inherited `deps: ['^:build']` already covers the
-# built dependencies it needs; no override needed here.
+# proof for reviews.product_rating.
+#
+# Both overrides below exist for the same reason `packages/messaging/moon.yml`'s does:
+# `test-integration/probes/relay-worker.probe.ts` is spawned as a standalone `bun` process
+# (harness/spawn-relay-probe.ts) that imports '@repo/reviews' by package specifier, resolving
+# through package.json#exports into dist/ — and `typecheck-tests` (ADR-0010) includes that same
+# probe file in the throwaway config it typechecks. The workspace-inherited tasks only depend on
+# '^:build' (this package's dependencies), never its own, so on a clean checkout this package's
+# own dist/ is not guaranteed to exist yet when either task runs — a scheduling race, not a
+# reliable pass. Caught in CI, not here: `messaging:typecheck-tests` failed on exactly this race
+# in the same run where `reviews:typecheck-tests` happened to pass — moon scheduled reviews' own
+# build first that time, by luck rather than by a declared dependency. Fixed here before it flips.
 tags:
   - tier-capability
   - liftable
+
+tasks:
+  test-integration:
+    deps:
+      - 'build'
+  typecheck-tests:
+    deps:
+      - 'build'
