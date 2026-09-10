@@ -51,6 +51,12 @@ const CASES: readonly Case[] = [
     violating: [path.join(FIXTURES, 'no-core-logging/violation')],
   },
   {
+    gate: 'no-fetch-outside-shared-api',
+    script: 'tools/arch-checks/src/no-fetch-outside-shared-api.ts',
+    clean: [path.join(FIXTURES, 'no-fetch-outside-shared-api/allowed')],
+    violating: [path.join(FIXTURES, 'no-fetch-outside-shared-api/violation')],
+  },
+  {
     gate: 'no-cjs-exports-map',
     script: 'tools/arch-checks/src/no-cjs-exports-map.ts',
     clean: [path.join(FIXTURES, 'no-cjs-exports-map/allowed')],
