@@ -34,6 +34,13 @@ export interface AuthenticateAsOptions {
    * up on first use (the suite's open-signup e2e posture, `harness/start-api-server.ts`) — callers
    * pick a unique-enough address per test to avoid two specs sharing one session by accident. */
   readonly email: string;
+  /**
+   * TASK-0008: when `true`, grants the newly-minted session's user the `catalogue_manager`
+   * capability (`test-session-route.ts`'s own `catalogueManager` field) — what
+   * `catalogue-authoring.spec.ts` uses in place of TASK-0006 seed data, which does not exist for
+   * this spec to depend on. Omitted or `false` behaves exactly as before this field existed.
+   */
+  readonly catalogueManager?: boolean;
 }
 
 /**
@@ -52,7 +59,12 @@ export async function authenticateAs(
   options: AuthenticateAsOptions,
 ): Promise<void> {
   const response = await context.request.post(`${options.apiBaseURL}${TEST_SESSION_ROUTE_PATH}`, {
-    data: { email: options.email },
+    data: {
+      email: options.email,
+      ...(options.catalogueManager !== undefined
+        ? { catalogueManager: options.catalogueManager }
+        : {}),
+    },
   });
   if (response.status() !== 204) {
     throw new Error(

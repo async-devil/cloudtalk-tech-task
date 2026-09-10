@@ -22,6 +22,7 @@ import {
   TEST_SESSION_ROUTE_PATH,
   type TestSessionMockDependencies,
 } from '../src/runtime/test-session-route.js';
+import { fakePostgresDb } from './harness/fake-postgres.js';
 
 /**
  * A fake better-auth wiring that WOULD mint a cookie if it were ever reached. The point of the
@@ -29,7 +30,9 @@ import {
  * assertion (a route that exists but errors is still a route). It succeeds instead, which means
  * only a genuinely unregistered path can produce the expected 404.
  */
-function workingSessionMock(): TestSessionMockDependencies {
+function workingSessionMock(
+  overrides: Partial<TestSessionMockDependencies> = {},
+): TestSessionMockDependencies {
   return {
     authHandler: (request) =>
       Promise.resolve(
@@ -42,6 +45,8 @@ function workingSessionMock(): TestSessionMockDependencies {
       ),
     authBaseUrl: 'http://localhost:3000',
     readLastSentMailTextFor: (email) => MAILBOX.filter((m) => m.to === email).at(-1)?.text,
+    db: fakePostgresDb(() => ({ rows: [] })),
+    ...overrides,
   };
 }
 
@@ -246,5 +251,90 @@ describe('the e2e session-mock route is absent outside test mode', () => {
       mountTestSessionRoute(registrar, APP_MODE.Production, workingSessionMock()),
     ).toThrow(/APP_MODE=test only/);
     expect(registered).toEqual([]);
+  });
+
+  /**
+   * TASK-0008's own optional `catalogueManager` field — a small e2e-only capability grant riding
+   * the same lock as everything else in this file (proven above; not re-proven here).
+   *
+   * Positive proof via CAPTURED SQL TEXT, the exact contract `fake-postgres.ts`'s own header
+   * documents ("`respond` pattern-matches the compiled SQL text") — the fake has no real
+   * `auth.app_user` row to check against, so the SQL statement actually issued is the only signal
+   * available, the same way `catalogue-authoring-guards.test.ts`'s `sessionPoisonedBeyondLookup`
+   * proves absence by what never got called.
+   *
+   * MUTATION PERFORMED AND RESTORED (ADR-0010): changed the guard in
+   * `src/runtime/test-session-route.ts` from `if (body.catalogueManager === true)` to
+   * `if (body.catalogueManager)` (a bare truthy check). The "omitted" and "explicit false" tests
+   * below both stayed GREEN under that mutation only because neither ever sends a truthy
+   * non-boolean value — so a THIRD case was added first (a stray truthy value, see below) which
+   * goes red under the bare-truthy mutation and green under the strict `=== true` check; then all
+   * three were re-run against the mutation to confirm two stayed red (omitted implicitly stays
+   * `undefined`, which is falsy either way — so only the strict-equality check and the stray-value
+   * case actually distinguish the two implementations) before the guard was reverted.
+   */
+  describe('catalogueManager (TASK-0008)', () => {
+    function grantMatcher(text: string): boolean {
+      return /update\s+auth\.app_user\s+set\s+catalogue_manager\s*=\s*true/i.test(text);
+    }
+
+    async function postSession(body: Record<string, unknown>) {
+      const statements: { sql: string; parameters: readonly unknown[] }[] = [];
+      const db = fakePostgresDb((sql, parameters) => {
+        statements.push({ sql, parameters });
+        return { rows: [] };
+      });
+      const app = buildApp({ mode: APP_MODE.Test, sessionMock: workingSessionMock({ db }) });
+      const response = await app.handle(
+        new Request(`http://localhost${TEST_SESSION_ROUTE_PATH}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        }),
+      );
+      return { response, statements };
+    }
+
+    it('grants catalogue_manager when catalogueManager: true is posted', async () => {
+      const { response, statements } = await postSession({
+        email: SESSION_MOCK_EMAIL,
+        catalogueManager: true,
+      });
+
+      expect(response.status).toBe(204);
+      expect(statements.some((s) => grantMatcher(s.sql))).toBe(true);
+      // Scoped to the address this request just authenticated, not a blanket UPDATE.
+      const grant = statements.find((s) => grantMatcher(s.sql));
+      expect(grant?.parameters).toContain(SESSION_MOCK_EMAIL);
+    });
+
+    it('leaves catalogue_manager untouched when the field is omitted', async () => {
+      const { response, statements } = await postSession({ email: SESSION_MOCK_EMAIL });
+
+      expect(response.status).toBe(204);
+      expect(statements.some((s) => grantMatcher(s.sql))).toBe(false);
+    });
+
+    it('leaves catalogue_manager untouched when explicitly false', async () => {
+      const { response, statements } = await postSession({
+        email: SESSION_MOCK_EMAIL,
+        catalogueManager: false,
+      });
+
+      expect(response.status).toBe(204);
+      expect(statements.some((s) => grantMatcher(s.sql))).toBe(false);
+    });
+
+    // The case that actually distinguishes strict `=== true` from a bare truthy check (see the
+    // mutation note above) — a stray non-boolean truthy value must NOT grant the capability.
+    it('leaves catalogue_manager untouched for a non-boolean truthy value', async () => {
+      const { response, statements } = await postSession({
+        email: SESSION_MOCK_EMAIL,
+        catalogueManager: 'true',
+      });
+
+      expect(response.status).toBe(204);
+      expect(statements.some((s) => grantMatcher(s.sql))).toBe(false);
+    });
   });
 });
