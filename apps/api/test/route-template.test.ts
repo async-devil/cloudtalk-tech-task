@@ -31,10 +31,13 @@ describe('routeTemplateOf (contract-derived)', () => {
    */
   it('walks the nested contract: every namespace contributes its declared templates', () => {
     expect([...contractRouteTemplates()].sort()).toEqual([
+      '/moderation/reviews',
       '/products',
       '/products/{productSlug}',
       '/products/{productSlug}/reviews',
       '/reviews/{reviewToken}',
+      '/reviews/{reviewToken}/reject',
+      '/reviews/{reviewToken}/restore',
       '/session/bootstrap',
     ]);
   });
