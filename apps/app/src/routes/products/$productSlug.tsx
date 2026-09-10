@@ -28,6 +28,12 @@ import { useSession } from '../../shared/session/index.js';
  */
 const productDetailSearchSchema = z.object({
   review: z.enum(['new', 'edit']).optional().catch(undefined),
+  /** TASK-0008: set by `routes/products/new.tsx`'s `onSuccess` navigation only — "on success focus
+   * lands on the new product's heading" (SPEC-0001 S7). Stripped immediately once consumed (see
+   * the effect below), so it never survives a reload or a shared link. Same `.catch` precedent as
+   * `review` above: a hand-typed `?created=whatever` degrades to "not just created" rather than a
+   * validation error. */
+  created: z.literal(true).optional().catch(undefined),
 });
 
 export const Route = createFileRoute('/products/$productSlug')({
@@ -82,10 +88,11 @@ function ProductDetailErrorComponent({ error }: ErrorComponentProps) {
  */
 function ProductDetailRoute() {
   const { productSlug } = Route.useParams();
-  const { review } = Route.useSearch();
+  const { review, created } = Route.useSearch();
   const navigate = Route.useNavigate();
-  // Visitor surface (rule 15) — this only decides the form's submit-button-vs-sign-in-prompt
-  // branch; nothing on this route is gated by it beyond that.
+  // Visitor surface (rule 15) — decides the review form's submit-button-vs-sign-in-prompt branch
+  // AND (TASK-0008) the header's "Edit product" affordance; the server's own capability guard is
+  // what actually enforces the latter, this is courtesy only.
   const session = useSession();
 
   const productQuery = useProductDetail(productSlug);
@@ -105,6 +112,18 @@ function ProductDetailRoute() {
       setPendingFocusToken(undefined);
     }
   }, [pendingFocusToken, ownReview?.token]);
+
+  // TASK-0008's own success step: "on success focus lands on the new product's heading." `created`
+  // arrives only from `routes/products/new.tsx`'s own navigation (this route never sets it itself)
+  // — once the header has actually rendered, focus it and strip the param immediately so a reload
+  // or a shared link never re-triggers the focus jump.
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (created === true && productQuery.data !== undefined) {
+      headingRef.current?.focus();
+      void navigate({ search: (prev) => ({ ...prev, created: undefined }), replace: true });
+    }
+  }, [created, productQuery.data, navigate]);
 
   function openForm(mode: 'new' | 'edit'): void {
     void navigate({ search: (prev) => ({ ...prev, review: mode }) });
@@ -143,7 +162,11 @@ function ProductDetailRoute() {
       {productQuery.isLoading ? (
         <ProductHeaderSkeleton />
       ) : productQuery.data !== undefined ? (
-        <ProductHeader product={productQuery.data} />
+        <ProductHeader
+          product={productQuery.data}
+          canManageCatalogue={session?.canManageCatalogue === true}
+          headingRef={headingRef}
+        />
       ) : null}
 
       {isFormOpen ? (

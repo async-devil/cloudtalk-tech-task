@@ -35,11 +35,14 @@ afterEach(() => {
   sessionStorage.clear();
 });
 
-function sessionRoute(signedIn: boolean): ApiRoute {
+function sessionRoute(
+  signedIn: boolean,
+  overrides: Parameters<typeof bootstrapPayload>[0] = {},
+): ApiRoute {
   return {
     method: 'GET',
     test: (url) => url.pathname === '/api/session/bootstrap',
-    respond: () => (signedIn ? jsonResponse(bootstrapPayload()) : unauthorizedResponse()),
+    respond: () => (signedIn ? jsonResponse(bootstrapPayload(overrides)) : unauthorizedResponse()),
   };
 }
 
@@ -74,9 +77,14 @@ function reviewRemoveRoute(respond: ApiRoute['respond']): ApiRoute {
 async function renderProductDetail(
   initialPath: string,
   routes: readonly ApiRoute[],
-  options: { readonly signedIn?: boolean } = {},
+  options: { readonly signedIn?: boolean; readonly canManageCatalogue?: boolean } = {},
 ) {
-  stub = stubApiFetch([sessionRoute(options.signedIn ?? false), ...routes]);
+  stub = stubApiFetch([
+    sessionRoute(options.signedIn ?? false, {
+      canManageCatalogue: options.canManageCatalogue ?? false,
+    }),
+    ...routes,
+  ]);
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const router = createAppRouter({
     queryClient,
@@ -160,6 +168,51 @@ describe('S3 — product header and reviews (independent loading/error)', () => 
     await screen.findByText('Edited later');
     expect(screen.getByText(/edited/)).toBeTruthy();
     expect(screen.getByText(/jane/)).toBeTruthy();
+  });
+});
+
+describe('S3 — the "Edit product" entry point (TASK-0008)', () => {
+  it('is absent for an anonymous visitor', async () => {
+    await renderProductDetail('/products/sony-wh-1000xm5', [
+      productGetRoute(() => jsonResponse(productDetail())),
+      reviewsListRoute(() => jsonResponse(pageOf([]))),
+    ]);
+
+    await screen.findByRole('heading', { name: 'Sony WH-1000XM5' });
+    expect(screen.queryByTestId('edit-product-link')).toBeNull();
+  });
+
+  it('is absent for a signed-in session without canManageCatalogue', async () => {
+    await renderProductDetail(
+      '/products/sony-wh-1000xm5',
+      [
+        productGetRoute(() => jsonResponse(productDetail())),
+        reviewsListRoute(() => jsonResponse(pageOf([]))),
+      ],
+      { signedIn: true, canManageCatalogue: false },
+    );
+
+    await screen.findByRole('heading', { name: 'Sony WH-1000XM5' });
+    expect(screen.queryByTestId('edit-product-link')).toBeNull();
+  });
+
+  it('is present for a catalogue manager, linking to the edit route', async () => {
+    await renderProductDetail(
+      '/products/sony-wh-1000xm5',
+      [
+        productGetRoute(() => jsonResponse(productDetail())),
+        reviewsListRoute(() => jsonResponse(pageOf([]))),
+      ],
+      { signedIn: true, canManageCatalogue: true },
+    );
+
+    await screen.findByRole('heading', { name: 'Sony WH-1000XM5' });
+    // `findByTestId`, not `getByTestId`: `/products/$productSlug` is Visitor surface (in
+    // `PUBLIC_ROUTES`), so the ROOT guard never primes the session bootstrap query — only this
+    // component's own `useSession()` call triggers it, and it may still be in flight once the
+    // (separately-queried) product header has already rendered.
+    const link = await screen.findByTestId('edit-product-link');
+    expect(link.getAttribute('href')).toBe('/products/sony-wh-1000xm5/edit');
   });
 });
 

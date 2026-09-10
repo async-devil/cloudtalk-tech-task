@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAppRouter } from '../src/router.js';
 import {
   type ApiRoute,
+  bootstrapPayload,
   type FetchStub,
   jsonResponse,
   pageOf,
@@ -205,5 +206,56 @@ describe('CatalogueScreen — the URL is the state', () => {
     await vi.advanceTimersByTimeAsync(400);
 
     expect(router.state.location.searchStr).toContain('query=hea');
+  });
+});
+
+/** TASK-0008: a variant of `renderCatalogue` that answers the session bootstrap with a REAL
+ * payload instead of the file's default 401, so the manager entry point has a session to gate on. */
+async function renderCatalogueSignedIn(
+  initialPath: string,
+  bootstrapOverrides: Parameters<typeof bootstrapPayload>[0],
+  extraRoutes: readonly ApiRoute[],
+) {
+  const sessionRoute: ApiRoute = {
+    method: 'GET',
+    test: (url) => url.pathname === '/api/session/bootstrap',
+    respond: () => jsonResponse(bootstrapPayload(bootstrapOverrides)),
+  };
+  stub = stubApiFetch([sessionRoute, ...extraRoutes]);
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const router = createAppRouter({
+    queryClient,
+    history: createMemoryHistory({ initialEntries: [initialPath] }),
+  });
+  await router.load();
+  render(
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
+  return { queryClient, router };
+}
+
+describe('CatalogueScreen — the "New product" entry point (TASK-0008)', () => {
+  it('is absent for an anonymous visitor', async () => {
+    await renderCatalogue('/', [productsRoute(() => jsonResponse(pageOf([])))]);
+    await screen.findByText('No products in the catalogue yet.');
+    expect(screen.queryByTestId('new-product-link')).toBeNull();
+  });
+
+  it('is absent for a signed-in session without canManageCatalogue', async () => {
+    await renderCatalogueSignedIn('/', { canManageCatalogue: false }, [
+      productsRoute(() => jsonResponse(pageOf([]))),
+    ]);
+    await screen.findByText('No products in the catalogue yet.');
+    expect(screen.queryByTestId('new-product-link')).toBeNull();
+  });
+
+  it('is present for a catalogue manager', async () => {
+    await renderCatalogueSignedIn('/', { canManageCatalogue: true }, [
+      productsRoute(() => jsonResponse(pageOf([]))),
+    ]);
+    const link = await screen.findByTestId('new-product-link');
+    expect(link.getAttribute('href')).toBe('/products/new');
   });
 });

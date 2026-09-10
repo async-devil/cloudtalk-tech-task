@@ -1,5 +1,6 @@
 import { ERROR_CODE } from '@repo/kernel';
 import { Button, Card, CardContent, Label } from '@repo/styles';
+import { Link } from '@tanstack/react-router';
 import { useEffect, useId, useState } from 'react';
 import { errorMessageFor } from '../../shared/errors/index.js';
 import { useSession } from '../../shared/session/index.js';
@@ -37,8 +38,9 @@ export function CatalogueScreen({ search, onSearchChange }: CatalogueScreenProps
   const filters = filtersFromSearch(search);
   const query = useCatalogueProducts(filters);
   const filterActive = hasActiveFilter(filters);
-  // Visitor surface (rule 15) — this reads only to show a minimal "signed in" line; nothing on
-  // this screen is gated by it (no manager affordance in this wave, TASK-0008's own scope line).
+  // Visitor surface (rule 15) — the "signed in" line, AND (TASK-0008) the "New product" entry
+  // point below, gated on `canManageCatalogue`. Courtesy only: `products.create`'s own
+  // `requireCatalogueManager` guard is the actual boundary regardless of what renders here.
   const session = useSession();
   const searchFieldId = useId();
   const categoryFieldId = useId();
@@ -65,11 +67,20 @@ export function CatalogueScreen({ search, onSearchChange }: CatalogueScreenProps
     <main className="mx-auto flex max-w-4xl flex-col gap-4 p-4">
       <div className="flex items-baseline justify-between gap-2">
         <h1 className="text-display">Catalogue</h1>
-        {session !== undefined && (
-          <p className="text-caption text-content-muted" data-testid="session-user-token">
-            Signed in as {session.userToken}
-          </p>
-        )}
+        <div className="flex items-center gap-3">
+          {session !== undefined && (
+            <p className="text-caption text-content-muted" data-testid="session-user-token">
+              Signed in as {session.userToken}
+            </p>
+          )}
+          {session?.canManageCatalogue === true && (
+            <Button type="button" asChild>
+              <Link to="/products/new" data-testid="new-product-link">
+                New product
+              </Link>
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Native form controls only — no click-handler on a div (SPEC-0001 S2's keyboard contract).
