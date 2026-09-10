@@ -1,7 +1,7 @@
 ---
 id: TASK-0004
 title: SPA — product list, product detail, and the review submission flow
-status: draft
+status: in-progress
 adr: [ADR-0008, ADR-0012]
 date: 2026-09-08
 ---
@@ -19,17 +19,23 @@ Moderation UI. Author profiles. Anything requiring a route the API does not serv
 
 ## Acceptance criteria
 
-- [ ] No slice imports another slice; `shared/` imports no slice. Both directions are enforced by
+- [x] No slice imports another slice; `shared/` imports no slice. Both directions are enforced by
       the dependency-cruiser run in CI.
-- [ ] Every network call goes through `shared/api`; the no-fetch gate is green.
-- [ ] Every string a user reads comes from a message map keyed by error code, not from a thrown
+- [x] Every network call goes through `shared/api`; the no-fetch gate is green.
+- [x] Every string a user reads comes from a message map keyed by error code, not from a thrown
       error's message.
-- [ ] Submitting a review while signed out routes to sign-in and returns to the product afterwards,
+- [x] Submitting a review while signed out routes to sign-in and returns to the product afterwards,
       preserving the in-progress rating.
 - [ ] The rating control is operable by keyboard alone and announces its value; asserted in the
-      accessibility e2e pass.
-- [ ] The aggregate display states when it was last computed rather than implying it is live.
+      accessibility e2e pass. **Unit-tested in full** (`packages/styles/test/star-rating.test.tsx`)
+      and the e2e pass covers S2's other controls, but the star-rating e2e assertion itself is
+      `test.skip`ped in `accessibility.spec.ts` — it needs a real product page, which needs
+      TASK-0006's seed data. Closes when that lands.
+- [x] The aggregate display states when it was last computed rather than implying it is live.
 - [ ] A Playwright spec covers: browse, open a product, submit a review, see it in the list.
+      Written in full in `catalogue-and-review.spec.ts` and `test.skip`ped for the identical
+      reason above — no product-seeding mechanism exists in this checkout until TASK-0006 lands.
+      One line to flip once it does.
 
 ## Notes
 
