@@ -18,6 +18,15 @@ export const sessionBootstrapSchema = z.object({
    * exactly the question that is asked.
    */
   onboardingComplete: z.boolean(),
+  /**
+   * Whether the SPA should render the catalogue-authoring affordances — *New product* on the
+   * catalogue, *Edit product* on product detail (SPEC-0001 screen S7, TASK-0008). **An affordance,
+   * not an authorization**: this field says what the client may SHOW, never what the row stores —
+   * `auth.app_user.catalogue_manager` is the source of truth, and the name is deliberately
+   * different from the column so this payload is never mistaken for it. `products.create`/
+   * `products.update` refuse the write regardless of what this field said (ADR-0018, SPEC-0003).
+   */
+  canManageCatalogue: z.boolean(),
 });
 export type SessionBootstrap = z.infer<typeof sessionBootstrapSchema>;
 
