@@ -27,6 +27,7 @@ module's tests, not in a new scanner here.
 | `run-depcruise.ts` | Invokes dependency-cruiser (JS API, not the CLI — see the file header for why) against `.dependency-cruiser.cjs`: tier direction, one public entry point, sanctioned capability-to-capability edges, no circular imports, frontend slice isolation, adapter/SDK confinement to composition roots. | ADR-0001, ADR-0003, ADR-0005, ADR-0012 |
 | `run-fixture-tests.ts` | dependency-cruiser's own red/green proof: every named rule in `.dependency-cruiser.cjs` fires on a `test/fixtures/violations/*` tree and stays clean on the matching `ok/*` tree. | ADR-0001 |
 | `no-core-logging.ts` | "Handled once, at a boundary": `logger.error(`/`logger.fatal(`/`console.*` outside a small named set of boundary files and subtrees is a violation. Info/debug logging is out of scope by design. | ADR-0009 |
+| `no-fetch-outside-shared-api.ts` | "Network access goes through `shared/api` only": a bare `fetch(` or `globalThis.fetch(` anywhere under `apps/app/src/**` outside `apps/app/src/shared/api/**` is a violation. SPA-specific — `packages/*` and every app but `apps/app` are out of scope. | ADR-0012 |
 | `no-cjs-exports-map.ts` | No shipped `package.json` `exports` map may carry a `require` condition or a `.cjs` target, and no `.cjs` file may exist outside the named exemption list (tool config `require()`'d synchronously). | ADR-0002 |
 | `unjustified-any-gate.ts` | Every `as any` / `@ts-ignore` / `@ts-expect-error` needs a same-line-or-above comment naming the constraint, or a `biome-ignore lint/suspicious/noExplicitAny:` reason. Generated (`*.gen.ts`) files are exempt. | ADR-0003 |
 | `telemetry-map.ts` | Every span/instrument a module's `src/` emits has a `## Telemetry` README line, and every declared line names something actually emitted — both directions, per module, with a dated `(amends <link>, YYYY-MM-DD: <reason>)` marker as the sanctioned escape hatch for a recorded divergence. | ADR-0009 |
@@ -55,6 +56,7 @@ can point it away from the real repo; with none, it checks the real tree and is 
 ```
 bun tools/arch-checks/src/run-depcruise.ts
 bun tools/arch-checks/src/no-core-logging.ts [repoRoot]
+bun tools/arch-checks/src/no-fetch-outside-shared-api.ts [repoRoot]
 bun tools/arch-checks/src/no-cjs-exports-map.ts [repoRoot]
 bun tools/arch-checks/src/unjustified-any-gate.ts [repoRoot]
 bun tools/arch-checks/src/telemetry-map.ts [repoRoot]
@@ -71,9 +73,9 @@ runs it from that package's own directory (it reads `process.cwd()`).
 
 ## Fixture honesty
 
-`selftest.ts` proves six gates on both a clean and a deliberately violating fixture —
-`no-core-logging`, `no-cjs-exports-map`, `unjustified-any-gate`, `telemetry-map`,
-`typecheck-tests` and `gate-integrity`. The violating half is the one that matters, since a rule
+`selftest.ts` proves seven gates on both a clean and a deliberately violating fixture —
+`no-core-logging`, `no-fetch-outside-shared-api`, `no-cjs-exports-map`, `unjustified-any-gate`,
+`telemetry-map`, `typecheck-tests` and `gate-integrity`. The violating half is the one that matters, since a rule
 that silently stopped matching looks exactly like a codebase that stopped violating it.
 (`depcruise` has its own equivalent proof in `run-fixture-tests.ts`.) Two gates ship no such
 proof, and both absences are stated plainly rather than glossed over:
@@ -103,9 +105,10 @@ or breaking upgrades to keep enforcing a rule.
 
 ## Named invariants
 
-- **INV-1** — Every fixture-backed checker (`no-core-logging`, `no-cjs-exports-map`,
-  `unjustified-any-gate`, `telemetry-map`, `gate-integrity`) reports zero violations against its
-  own clean fixture and at least one against its own violating fixture. Test: `src/selftest.ts`.
+- **INV-1** — Every fixture-backed checker (`no-core-logging`, `no-fetch-outside-shared-api`,
+  `no-cjs-exports-map`, `unjustified-any-gate`, `telemetry-map`, `gate-integrity`) reports zero
+  violations against its own clean fixture and at least one against its own violating fixture.
+  Test: `src/selftest.ts`.
 - **INV-2** — Every named rule in `.dependency-cruiser.cjs` fires on its own
   `test/fixtures/violations/*` tree and stays clean on the matching `ok/*` tree. Test:
   `src/run-fixture-tests.ts`.
@@ -129,8 +132,8 @@ every other module.
 Every gate above (excluding `run-integration-suite.ts` and `typecheck-tests.ts`, which are
 per-package rather than repo-wide) is a `root:*` task in the repository root `moon.yml`, run by
 `bun moon ci`: `depcruise`, `depcruise-selftest`, `arch-checks-selftest`, `docs-check`,
-`gate-integrity`, `no-core-logging`, `unjustified-any-gate`, `no-cjs-exports-map`,
-`migration-ddl`, `telemetry-map`.
+`gate-integrity`, `no-core-logging`, `no-fetch-outside-shared-api`, `unjustified-any-gate`,
+`no-cjs-exports-map`, `migration-ddl`, `telemetry-map`.
 
 `typecheck-tests` is an INHERITED task (`.moon/tasks/all.yml`), not a `root:*` one, for the same
 reason `test-integration` is: it needs each package's upstream `^:build` to have run, which only a

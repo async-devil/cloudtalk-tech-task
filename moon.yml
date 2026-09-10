@@ -100,6 +100,20 @@ tasks:
     options:
       runInCI: true
 
+  # ADR-0012: the SPA talks to a server through `shared/api` only. A bare `fetch(` anywhere else
+  # under `apps/app/src/**` is how an untyped, unretried, unauthenticated call gets into a
+  # component — `apps/app/src/shared/api/index.ts`'s own header comment names this gate.
+  no-fetch-outside-shared-api:
+    command: 'bun'
+    args:
+      - 'tools/arch-checks/src/no-fetch-outside-shared-api.ts'
+    inputs:
+      - 'apps/app/src/**/*'
+      - '!**/node_modules/**'
+      - 'tools/arch-checks/src/no-fetch-outside-shared-api.ts'
+    options:
+      runInCI: true
+
   # ADR-0003: `any` and `@ts-ignore` need a written constraint at the site. This reports the ones
   # that carry none — it does not ban them, because a blanket ban produces worse casts.
   unjustified-any-gate:
