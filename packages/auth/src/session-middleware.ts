@@ -1,4 +1,4 @@
-import { InternalError, UnauthorizedError } from '@repo/kernel';
+import { ForbiddenError, InternalError, UnauthorizedError } from '@repo/kernel';
 import { rowAs } from '@repo/persistence';
 import { Elysia } from 'elysia';
 import { type Kysely, sql } from 'kysely';
@@ -19,6 +19,14 @@ export interface RequestSession {
   readonly userId: string;
   /** `auth.app_user.token` — the only user identifier that may cross the wire (ADR-0011). */
   readonly userToken: string;
+  /**
+   * `auth.app_user.catalogue_manager` (TASK-0008, ADR-0018): whether this session's user holds the
+   * capability to create and edit catalogue products. Server-side only, like `userId` — never
+   * serialized as-is; the bootstrap payload exposes it under a deliberately different name
+   * (`canManageCatalogue`, SPEC-0003) so the wire field is never mistaken for the source of truth.
+   * {@link requireCatalogueManager} is the boundary that actually enforces it.
+   */
+  readonly catalogueManager: boolean;
 }
 
 /** Dependencies for the session middleware. */
@@ -48,7 +56,8 @@ export async function resolveRequestSession(
       return undefined;
     }
     const result = await sql`
-      SELECT app_user_id, token FROM auth.app_user WHERE identity_id = ${lookup.session.userId}::uuid
+      SELECT app_user_id, token, catalogue_manager FROM auth.app_user
+      WHERE identity_id = ${lookup.session.userId}::uuid
     `.execute(deps.db);
     if (result.rows[0] === undefined) {
       throw new InternalError('auth: session references an identity with no auth.app_user row', {
@@ -57,7 +66,11 @@ export async function resolveRequestSession(
     }
     const appUser = rowAs(appUserRowSchema, result.rows[0]);
     span.setAttribute('appUserId', appUser.app_user_id);
-    return { userId: appUser.app_user_id, userToken: appUser.token };
+    return {
+      userId: appUser.app_user_id,
+      userToken: appUser.token,
+      catalogueManager: appUser.catalogue_manager,
+    };
   });
 }
 
@@ -83,4 +96,24 @@ export function requireSession(context: { readonly session?: RequestSession }): 
     throw new UnauthorizedError('authentication required');
   }
   return context.session;
+}
+
+/**
+ * Guard for route handlers that need the `catalogue_manager` capability (TASK-0008, ADR-0018,
+ * SPEC-0003) — strictly stronger than {@link requireSession}: no session still 401s (via
+ * `requireSession` itself), and a resolved session whose user does not hold the capability 403s,
+ * rather than being let through. The two-code distinction is TASK-0008's own acceptance criterion
+ * ("a request with no session receives 401; a request with a session lacking the capability
+ * receives 403"), encoded once here rather than left for every capability-gated router to
+ * reimplement — the same reason `requireSession` itself is a shared function and not an inline
+ * check at each call site.
+ */
+export function requireCatalogueManager(context: {
+  readonly session?: RequestSession;
+}): RequestSession {
+  const session = requireSession(context);
+  if (!session.catalogueManager) {
+    throw new ForbiddenError('catalogue_manager capability required');
+  }
+  return session;
 }

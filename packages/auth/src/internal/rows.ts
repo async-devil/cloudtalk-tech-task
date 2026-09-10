@@ -2,10 +2,14 @@ import { z } from 'zod';
 
 /** The `auth.app_user` shape the session middleware reads. Raw SQL rows parse through `rowAs` at
  * this boundary rather than being cast (ADR-0004, ADR-0006) — a cast is a claim, a parse is a
- * check. Only the two columns that path actually needs. */
+ * check. `catalogue_manager` (TASK-0008, ADR-0018) joins `app_user_id`/`token` here rather than a
+ * second query: `resolveRequestSession` resolves the capability the same request it resolves
+ * identity, so a capability-gated router never needs a round trip beyond the one every route
+ * already pays for session resolution. */
 export const appUserRowSchema = z.object({
   app_user_id: z.string(),
   token: z.string(),
+  catalogue_manager: z.boolean(),
 });
 export type AppUserRow = z.infer<typeof appUserRowSchema>;
 
