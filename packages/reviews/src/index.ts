@@ -3,7 +3,15 @@ export { RATING_RECOMPUTE_OP, REVIEWS_OUTBOX } from './outbox.js';
 export {
   type CreateProductInput,
   createProduct,
+  getProductBySlug,
+  type ListProductsInput,
+  listProducts,
+  type ProductDetailRecord,
+  type ProductListPage,
+  type ProductListSort,
+  type ProductRatingSummary,
   type ProductRecord,
+  type ProductSummaryRecord,
   type UpdateProductInput,
   updateProduct,
 } from './products.js';
@@ -20,8 +28,17 @@ export {
   recomputeProductRating,
 } from './rating.js';
 export {
+  type ListReviewsForProductInput,
+  listReviewsForProduct,
+  type RemoveReviewInput,
+  type ReviewListItem,
+  type ReviewListPage,
+  type ReviewMutationRecord,
   type ReviewRecord,
+  removeReview,
   type SubmitReviewInput,
   type SubmitReviewResult,
   submitReview,
+  type UpdateReviewInput,
+  updateReview,
 } from './reviews.js';
