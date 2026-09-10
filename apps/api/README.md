@@ -12,7 +12,7 @@ around it — headers, CORS, the body cap, rate limits, error mapping.
 
 | Path | What it is |
 |---|---|
-| `/api/*` | The mounted oRPC handler implementing `appContract`. Session-required. |
+| `/api/*` | The mounted oRPC handler implementing `appContract`. Per-route session requirement: `session.bootstrap` and every write (`reviews.submit`/`update`/`remove`) require a resolved session; the catalogue and review-list reads (`products.*`, `reviews.listForProduct`) are anonymous (SPEC-0003). |
 | `/api/auth/*` | better-auth's own fetch handler, mounted from `@repo/auth`. |
 | `/health` | Process liveness plus a bounded Postgres round trip. |
 | `/health/worker` | Registered only when this root starts background workers. |
@@ -22,7 +22,9 @@ around it — headers, CORS, the body cap, rate limits, error mapping.
 `src/runtime/main.ts` is the one file that names concrete adapters. Everything else receives ports.
 `APP_MODE` decides which: `test` wires deterministic stubs and lenient config; `staging` and
 `production` wire real adapters and refuse to boot on a missing required key, listing every missing
-key at once rather than failing on the first.
+key at once rather than failing on the first. The ONE Postgres pool it creates (step 5) is handed to
+`buildApp` twice — once inside `session` (auth's own lookup) and once as the top-level `db` the
+`products`/`reviews` routers close over (TASK-0003) — never two pools for one process.
 
 Two adapters live here because the modules that need them must not know about them:
 
@@ -58,6 +60,24 @@ CI, so a key that exists in code and not in the example is a red build.
   a route series for nothing (→ `test/health-routes.test.ts`).
 - **INV-9** — A permanently worker-dead process exits rather than serving while silently doing no
   background work (→ `test/worker-liveness.test.ts`).
+- **INV-10** — An anonymous `reviews.submit`/`update`/`remove` request is answered 401 without the
+  write pipeline ever touching the database (TASK-0003) — proved with a `db` that throws on any
+  access at all, so a passing 401 is a genuine proof of "never reached," not merely an untested
+  absence (→ `test/write-guards-and-limits.test.ts`).
+- **INV-11** — Editing or deleting a review authored by another session, and one whose token does
+  not exist at all, answer the IDENTICAL 403 body — this endpoint is not an existence oracle
+  (SPEC-0001 rule 5), asserted at the HTTP layer with a real session resolved through a fake
+  Postgres rather than as a unit test of the ownership guard alone (→
+  `test/write-guards-and-limits.test.ts`).
+- **INV-12** — A `limit` above a list route's ceiling is `400 VALIDATION`, never silently capped to
+  the maximum (TASK-0003) (→ `test/write-guards-and-limits.test.ts`).
+- **INV-13** — A rate-limit rejection from any of the four buckets (`auth`,
+  `unauthenticated-post`, `anonymous-read`, `review-submission` — ADR-0018 extended by ADR-0019)
+  carries a `Retry-After` header computed from the same `retryAfterMs` every bucket's
+  `RateLimitedError` reports (→ `test/write-guards-and-limits.test.ts`, `test/rate-limit.test.ts`).
+- **INV-14** — The OpenAPI document generated from `appContract` lists every declared route with a
+  2xx response, and TASK-0003's own six routes document exactly the error statuses SPEC-0003
+  declares for each (→ `test/openapi.test.ts`).
 
 ## Telemetry
 

@@ -1,28 +1,39 @@
 import { OpenAPIHandler } from '@orpc/openapi/fetch';
 import { resolveRequestSession, type SessionMiddlewareDependencies } from '@repo/auth';
 import { ERROR_CODE } from '@repo/kernel';
+import type { Kysely } from 'kysely';
 import { createAppRouter } from '../routes/app.router.js';
 import type { HttpRequestContext } from './error-mapper.js';
 import { errorResponseFor, finalizeErrorResponse } from './error-mapper.js';
 import { routeTemplateOf } from './route-template.js';
-import { type RateLimiters, withRetryAfterHeader } from './security/rate-limit.js';
+import {
+  isReviewSubmissionRoute,
+  type RateLimiters,
+  withRetryAfterHeader,
+} from './security/rate-limit.js';
 
 export interface HttpHandlerDeps {
   /** Optional so callers with no interest in auth (a wiring-only test) keep constructing the
    * handler unchanged. Absent ⇒ every request resolves `session: undefined`, so `requireSession`
    * always 401s (fail closed). */
   readonly session?: SessionMiddlewareDependencies;
-  /** The UnauthenticatedPost half of the rate-limit policy — optional (same precedent as
-   * `session`) so suites with no interest in the security baseline keep constructing the handler
-   * unchanged. The Auth bucket is consulted at the `/api/auth/*` route in `runtime/build-app.ts`,
-   * not here. */
+  /** The UnauthenticatedPost/AnonymousRead/ReviewSubmission halves of the rate-limit policy —
+   * optional (same precedent as `session`) so suites with no interest in the security baseline
+   * keep constructing the handler unchanged. The Auth bucket is consulted at the `/api/auth/*`
+   * route in `runtime/build-app.ts`, not here. */
   readonly rateLimiters?: RateLimiters;
+  /** The `products`/`reviews` routers' shared Postgres handle — optional, same precedent, so a
+   * suite exercising only `session` (or the wiring around it) keeps constructing the handler
+   * unchanged; absence fails each product/review route closed with a typed 500
+   * (`routes/require-db.ts`), never a crash. */
+  readonly db?: Kysely<unknown>;
 }
 
 /**
  * Builds the Fetch-API handler `Elysia#mount('/api', ...)` delegates to: an oRPC `OpenAPIHandler`
- * implementing `appContract` (`session`, for now) over its declared `method`/`path` routes, with
- * every non-2xx response finalized into the uniform wire error shape before it leaves the app.
+ * implementing `appContract` (`session`, `products`, `reviews`) over its declared `method`/`path`
+ * routes, with every non-2xx response finalized into the uniform wire error shape before it leaves
+ * the app.
  *
  * The per-request {@link HttpRequestContext} (route TEMPLATE + method + resolved session) is
  * resolved once here and passed as the oRPC initial context, so every handler that catches and
@@ -32,7 +43,7 @@ export interface HttpHandlerDeps {
  * (`runtime/build-app.ts`'s header note).
  */
 export function createHttpHandler(deps: HttpHandlerDeps): (request: Request) => Promise<Response> {
-  const handler = new OpenAPIHandler(createAppRouter());
+  const handler = new OpenAPIHandler(createAppRouter(deps.db !== undefined ? { db: deps.db } : {}));
 
   return async (request: Request): Promise<Response> => {
     const baseContext = {
@@ -53,12 +64,35 @@ export function createHttpHandler(deps: HttpHandlerDeps): (request: Request) => 
         return errorResponseFor(error, baseContext);
       }
     }
-    // The no-session-keyed half of the rate-limit policy — run after session resolution
+    // The no-session-keyed halves of the rate-limit policy — run after session resolution
     // (header-only; still strictly before the oRPC handler's own JSON body parse just below it, so
-    // the ordering law — "before body parsing" — holds).
+    // the ordering law — "before body parsing" — holds). `unauthenticated-post` and
+    // `anonymous-read` (ADR-0019) are mutually exclusive by method (POST vs. GET), so only one of
+    // the two branches below can ever fire for a given request.
     if (deps.rateLimiters !== undefined && session === undefined && request.method === 'POST') {
       try {
         await deps.rateLimiters.checkUnauthenticatedPost(request);
+      } catch (error) {
+        return withRetryAfterHeader(errorResponseFor(error, baseContext), error);
+      }
+    }
+    if (deps.rateLimiters !== undefined && session === undefined && request.method === 'GET') {
+      try {
+        await deps.rateLimiters.checkAnonymousRead(request);
+      } catch (error) {
+        return withRetryAfterHeader(errorResponseFor(error, baseContext), error);
+      }
+    }
+    // ADR-0019's `review-submission` bucket: a RESOLVED session hitting exactly `reviews.submit`/
+    // `reviews.update` — never `reviews.remove` (SPEC-0003's own bucket list omits it) and never
+    // any other session-required route. Keyed by the session's internal id, never an IP.
+    if (
+      deps.rateLimiters !== undefined &&
+      session !== undefined &&
+      isReviewSubmissionRoute(request.method, baseContext.routeTemplate)
+    ) {
+      try {
+        await deps.rateLimiters.checkReviewSubmission(session.userId);
       } catch (error) {
         return withRetryAfterHeader(errorResponseFor(error, baseContext), error);
       }
