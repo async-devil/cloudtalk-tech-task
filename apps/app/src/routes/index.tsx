@@ -1,30 +1,33 @@
-import { Card, CardContent } from '@repo/styles';
 import { createFileRoute } from '@tanstack/react-router';
-import { useSession } from '../shared/session/index.js';
+import { CatalogueScreen } from '../features/catalogue/catalogue-screen.js';
+import { catalogueSearchSchema } from '../features/catalogue/catalogue-search.js';
 
+/**
+ * The catalogue (SPEC-0001 S2), replacing the earlier signed-in-only placeholder. Public
+ * (`__root.tsx`'s `PUBLIC_ROUTES` — SPEC-0001 J1: browsing costs no session at any point).
+ */
 export const Route = createFileRoute('/')({
+  validateSearch: catalogueSearchSchema,
   component: HomeRoute,
 });
 
 /**
- * The signed-in landing screen — a route module, so it composes and owns nothing. It exists to
- * give the guard chain a real protected destination.
+ * A ROUTE MODULE: extracts the validated search params and composes the feature, owning nothing
+ * itself (the `sign-in.tsx` convention). `onSearchChange` is the one piece of router behaviour the
+ * slice cannot have directly (`features/` may not import `routes/`) — a merge-and-navigate,
+ * `replace: true` so debounced keystrokes do not pile up the browser's back button one entry per
+ * commit.
  */
 function HomeRoute() {
-  const session = useSession();
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
 
   return (
-    <main className="mx-auto flex max-w-2xl flex-col gap-4 p-4">
-      <Card>
-        <CardContent className="flex flex-col items-start gap-3">
-          {session === undefined ? (
-            <p>Loading…</p>
-          ) : (
-            // The user's PUBLIC token — the only user identifier this app ever holds.
-            <p data-testid="session-user-token">{session.userToken}</p>
-          )}
-        </CardContent>
-      </Card>
-    </main>
+    <CatalogueScreen
+      search={search}
+      onSearchChange={(patch) => {
+        void navigate({ search: (prev) => ({ ...prev, ...patch }), replace: true });
+      }}
+    />
   );
 }
