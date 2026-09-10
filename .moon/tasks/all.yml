@@ -35,6 +35,23 @@ tasks:
     command: 'vitest run'
     deps:
       - '^:build'
+  # ADR-0010: the test suites are typechecked too, and `typecheck` above structurally cannot do it.
+  # A package's own `tsconfig.json` carries `include: ["src"]` because that same config drives
+  # `build`, and emitting test files into `dist/` would ship them — so `test/` and
+  # `test-integration/` sit outside every compile the chain performs. vitest transpiles rather than
+  # typechecks, and a container suite may not run locally at all. Before this task, a type error in
+  # a durability harness was invisible everywhere and surfaced in CI as a runtime failure in a file
+  # nothing had ever compiled.
+  #
+  # Wrapped for the same reason `test-integration` is: the throwaway config this needs (the
+  # package's own, with `composite`/`rootDir`/`outDir` off and the test directories added) is
+  # written once in the script rather than as a second committed tsconfig per package that a new
+  # package can silently forget.
+  typecheck-tests:
+    command: 'bun ../../tools/arch-checks/src/typecheck-tests.ts'
+    deps:
+      - '^:build'
+
   # Wrapped rather than invoked directly, so "no Docker" has one answer instead of seven: a loud
   # local skip, a hard CI failure. See the script's header for why those two differ.
   test-integration:

@@ -69,6 +69,16 @@ const CASES: readonly Case[] = [
     violating: [path.join(FIXTURES, 'telemetry-map/violations')],
   },
   {
+    gate: 'typecheck-tests',
+    script: 'tools/arch-checks/src/typecheck-tests.ts',
+    // The two fixture trees differ ONLY in their test file — the module under test is byte
+    // identical in both. That is the property worth pinning: this gate must fire on a type error
+    // that lives outside `src`, because a package's own `tsconfig.json` (`include: ["src"]`) is
+    // structurally incapable of seeing one.
+    clean: [path.join(FIXTURES, 'typecheck-tests/clean')],
+    violating: [path.join(FIXTURES, 'typecheck-tests/violation')],
+  },
+  {
     gate: 'gate-integrity',
     script: 'tools/arch-checks/src/gate-integrity.ts',
     // The clean case is the REAL workflow set and the real manifest: this gate's whole job is to
