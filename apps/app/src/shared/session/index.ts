@@ -22,6 +22,15 @@ export interface SessionState {
    * disagree, the server is right").
    */
   readonly canManageCatalogue: boolean;
+  /**
+   * `SessionBootstrap.canModerate` (TASK-0009, SPEC-0003): whether this session may reject a
+   * review and restore a rejected one. Surfaced here so the `moderation` slice's screen and entry
+   * point can gate on it — a COURTESY gate only, mirroring `canManageCatalogue` exactly: the
+   * server's own `moderator` capability guard (`@repo/auth`'s `requireModerator`) is the actual
+   * security boundary and refuses `reviews.reject`/`restore`/`moderationList` regardless of what
+   * this field says.
+   */
+  readonly canModerate: boolean;
 }
 
 /**
@@ -76,5 +85,6 @@ export function useSession(): SessionState | undefined {
   return {
     userToken: data.userToken,
     canManageCatalogue: data.canManageCatalogue,
+    canModerate: data.canModerate,
   };
 }

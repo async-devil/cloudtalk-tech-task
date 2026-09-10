@@ -46,6 +46,14 @@ interface ProductsListKeyInput {
   readonly limit?: number;
 }
 
+/** Mirrors `reviewsModerationListInputSchema` (`@repo/contracts`) — same restatement rule
+ * `ProductsListKeyInput` above documents. */
+interface ModerationListKeyInput {
+  readonly state?: 'published' | 'rejected';
+  readonly cursor?: string;
+  readonly limit?: number;
+}
+
 export const queryKeys = {
   /**
    * Not a feature slice: the session bootstrap is shared-kernel state that the router guards read
@@ -82,17 +90,40 @@ export const queryKeys = {
   },
 
   /**
-   * `reviews.listForProduct` (SPEC-0001 S3/S4/S5): read by `product-detail`, invalidated by
-   * `review-submit` on a successful submit/edit/delete — two slices, same rule.
-   *
-   * `listForProduct` takes only `productSlug`: a PARTIAL key on purpose, so
-   * `invalidateQueries({ queryKey: queryKeys.reviews.listForProduct(slug) })` matches the live
-   * infinite query regardless of its `cursor`/`limit` — see this file's header on why the nested
-   * `input` object partial-matches rather than needing to be restated in full.
+   * `reviews.listForProduct`/`reviews.moderationList` (SPEC-0001 S3/S4/S5/S8): read by
+   * `product-detail` and `moderation` respectively — two slices sharing one procedure NAMESPACE,
+   * which is the split this file's header asks for ("grouped by procedure path"): `moderationList`
+   * is `reviews.moderationList` on the wire, not a `moderation.list` of its own, so its key lives
+   * under `reviews` here rather than under a new `moderation` namespace that would put the key
+   * factory's own grouping at odds with the contract it derives from — a reviewer checking "what
+   * key does `reviews.moderationList` register under" would otherwise have to know to look in a
+   * DIFFERENT namespace than the procedure's own name suggests.
    */
   reviews: {
     all: apiQuery.reviews.key(),
+    /**
+     * Takes only `productSlug`: a PARTIAL key on purpose, so
+     * `invalidateQueries({ queryKey: queryKeys.reviews.listForProduct(slug) })` matches the live
+     * infinite query regardless of its `cursor`/`limit` — see this file's header on why the nested
+     * `input` object partial-matches rather than needing to be restated in full.
+     */
     listForProduct: (productSlug: string) =>
       apiQuery.reviews.listForProduct.key({ type: 'infinite', input: { productSlug } }),
+    /**
+     * `moderationList` (SPEC-0001 S8, TASK-0009): `type: 'infinite'`, the same reasoning
+     * `products.list` above documents — the moderation screen's own "Load more" is
+     * `useInfiniteQuery` (`features/moderation/use-moderation-reviews.ts`).
+     *
+     * Takes `state` alone (never `cursor`/`limit`), so
+     * `invalidateQueries({ queryKey: queryKeys.reviews.moderationList({ state }) })` matches every
+     * loaded page of THAT state filter and no other — which is exactly the "invalidate the current
+     * filter only" behaviour the reject/restore success handler wants (see that hook's own doc):
+     * a row leaving the filtered set on the next refetch IS the row "updating in place" from the
+     * moderator's perspective, with no need to also touch the other state's cache.
+     */
+    moderationList: (input?: ModerationListKeyInput) =>
+      apiQuery.reviews.moderationList.key(
+        input === undefined ? { type: 'infinite' } : { type: 'infinite', input },
+      ),
   },
 } as const;
