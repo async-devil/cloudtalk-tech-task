@@ -1,4 +1,5 @@
 import { APP_MODE, type AppMode } from '@repo/config';
+import { type Kysely, sql } from 'kysely';
 
 /**
  * ============================================================================================
@@ -21,6 +22,13 @@ import { APP_MODE, type AppMode } from '@repo/config';
  * It mints a REAL session (the same two-request magic-link flow a user performs), not a forged
  * cookie: an e2e is then exercising the real session middleware and the real session resolution —
  * a hand-rolled cookie would prove none of that.
+ *
+ * TASK-0008 extends the POST body with an optional `catalogueManager: boolean` — a small,
+ * test-mode-only shortcut for granting the `catalogue_manager` capability to the session just
+ * minted, so a Playwright spec can act as a manager without a seeded row (TASK-0006 seed data does
+ * not exist for this catalogue-authoring spec to depend on). It rides the SAME structural lock as
+ * everything else in this file: the grant is a plain `UPDATE auth.app_user` scoped to the address
+ * just signed in, reachable only because this whole route is reachable only in `test` mode.
  */
 
 /** The one path this route occupies. Namespaced under `/api/test/` so it is unmistakable in a
@@ -83,6 +91,13 @@ export interface TestSessionMockDependencies {
    * link for the same address wants the live token, and an earlier one may already be consumed.
    */
   readonly readLastSentMailTextFor: (email: string) => string | undefined;
+  /**
+   * The SAME pool the composition root hands `HttpHandlerDeps.db` (TASK-0008) — needed for the
+   * `catalogueManager` capability grant below. `Kysely<unknown>`, same as every other capability
+   * module's own handle: this route owns no schema of its own and reaches straight into
+   * `auth.app_user`/`auth.identity`, exactly as `@repo/auth`'s own `resolveRequestSession` does.
+   */
+  readonly db: Kysely<unknown>;
 }
 
 /** The minimum of Elysia's surface this route needs; keeping it structural means this module
@@ -150,17 +165,21 @@ export function mountTestSessionRoute(
     if (request.method !== 'POST') {
       return new Response(null, { status: 405 });
     }
-    const body = (await request.json()) as { readonly email?: unknown };
+    const body = (await request.json()) as {
+      readonly email?: unknown;
+      readonly catalogueManager?: unknown;
+    };
     if (typeof body.email !== 'string' || body.email === '') {
       return Response.json({ error: 'email is required' }, { status: 400 });
     }
+    const email = body.email;
 
     // Step 1: ask better-auth to send a magic link, exactly as the sign-in screen does.
     const signIn = await deps.authHandler(
       new Request(`${deps.authBaseUrl}/api/auth/sign-in/magic-link`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', origin: deps.authBaseUrl },
-        body: JSON.stringify({ email: body.email }),
+        body: JSON.stringify({ email }),
       }),
     );
     if (signIn.status !== 200) {
@@ -173,7 +192,7 @@ export function mountTestSessionRoute(
     // Step 2: follow the link out of the dev sender's capture — the same URL a human clicks.
     // Scoped to the address this call just sent to, so a concurrent send from another spec cannot
     // hand this caller someone else's link (see MAGIC_LINK_EMAIL_QUERY_PARAMETER).
-    const text = deps.readLastSentMailTextFor(body.email);
+    const text = deps.readLastSentMailTextFor(email);
     const verifyUrl = text === undefined ? undefined : extractUrl(text);
     if (verifyUrl === undefined) {
       return Response.json({ error: 'no magic-link mail was captured' }, { status: 502 });
@@ -189,6 +208,20 @@ export function mountTestSessionRoute(
         { status: 502 },
       );
     }
+
+    // Step 4 (TASK-0008, optional): grant `catalogue_manager` to the identity just signed in. A
+    // real Postgres row exists by now — the session-create hook creates `auth.app_user` during
+    // Step 2's verify — so this can address it directly by the email this whole request already
+    // authenticated. Strictly `=== true`: omitted, `false`, or any other value leaves the row
+    // untouched (a fail-closed reading, matching ADR-0011's stance on booleans generally) rather
+    // than treating anything truthy as a grant.
+    if (body.catalogueManager === true) {
+      await sql`
+        UPDATE auth.app_user SET catalogue_manager = true
+        WHERE identity_id = (SELECT id FROM auth.identity WHERE email = ${email})
+      `.execute(deps.db);
+    }
+
     const headers = new Headers();
     for (const cookie of setCookies) {
       headers.append('set-cookie', cookie);

@@ -236,6 +236,7 @@ async function main(): Promise<void> {
             authHandler: authHandle.handler,
             authBaseUrl: config.auth.AUTH_BASE_URL,
             readLastSentMailTextFor: mailSender.readLastSentTextFor,
+            db,
           },
         }
       : {}),
