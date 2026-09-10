@@ -1,7 +1,7 @@
 ---
 id: TASK-0009
 title: Review moderation — reject, restore, and the moderator's screen
-status: draft
+status: ready
 adr: [ADR-0018]
 date: 2026-09-09
 ---

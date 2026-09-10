@@ -57,8 +57,8 @@ code.
 | [TASK-0005](tasks/TASK-0005-rating-aggregation-worker.md) | The rating aggregation worker | done | ADR-0007, ADR-0014 |
 | [TASK-0006](tasks/TASK-0006-seed-data-and-one-command-setup.md) | Seed data and a one-command local setup | draft | ADR-0005 |
 | [TASK-0007](tasks/TASK-0007-project-readme-and-writeup.md) | Project README and the architecture write-up | draft | — |
-| [TASK-0008](tasks/TASK-0008-catalogue-authoring.md) | Catalogue authoring — product creation and editing behind a capability | ready | ADR-0016, ADR-0018 |
-| [TASK-0009](tasks/TASK-0009-review-moderation.md) | Review moderation — reject, restore, and the moderator's screen | draft | ADR-0018 |
+| [TASK-0008](tasks/TASK-0008-catalogue-authoring.md) | Catalogue authoring — product creation and editing behind a capability | done | ADR-0016, ADR-0018 |
+| [TASK-0009](tasks/TASK-0009-review-moderation.md) | Review moderation — reject, restore, and the moderator's screen | ready | ADR-0018 |
 
 ## Conventions
 
