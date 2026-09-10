@@ -13,3 +13,11 @@ tasks:
   test-integration:
     deps:
       - 'build'
+  # Same reason as test-integration above, and caught the same way that one already was: the
+  # throwaway config `typecheck-tests` (ADR-0010) writes for this package includes
+  # `test-integration/probes/*.probe.ts`, which import '@repo/messaging' by package specifier —
+  # the inherited task's `deps: ['^:build']` never guarantees this package's OWN dist/ exists
+  # first. Observed failing in CI on exactly this race: "Cannot find module '@repo/messaging'".
+  typecheck-tests:
+    deps:
+      - 'build'
