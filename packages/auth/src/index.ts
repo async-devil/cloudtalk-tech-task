@@ -18,6 +18,7 @@ export { type AuthPurgeResult, purgeExpiredAuthRows, startAuthRetention } from '
 export {
   createSessionMiddleware,
   type RequestSession,
+  requireCatalogueManager,
   requireSession,
   resolveRequestSession,
   type SessionMiddlewareDependencies,
