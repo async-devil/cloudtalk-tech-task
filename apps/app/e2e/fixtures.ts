@@ -6,6 +6,10 @@ export interface AuthenticateOptions {
   /** TASK-0008: mints the session as a catalogue manager — see `harness/session-mock.ts`'s
    * `AuthenticateAsOptions.catalogueManager`. */
   readonly catalogueManager?: boolean;
+  /** TASK-0009: mints the session as a moderator — see `harness/session-mock.ts`'s
+   * `AuthenticateAsOptions.moderator`. Independent of `catalogueManager`, same as the field it
+   * mirrors — a spec may request either, both, or neither. */
+  readonly moderator?: boolean;
 }
 
 export interface E2eFixtures {
@@ -48,6 +52,7 @@ export const test = base.extend<E2eFixtures>({
         ...(options?.catalogueManager !== undefined
           ? { catalogueManager: options.catalogueManager }
           : {}),
+        ...(options?.moderator !== undefined ? { moderator: options.moderator } : {}),
       }),
     );
   },

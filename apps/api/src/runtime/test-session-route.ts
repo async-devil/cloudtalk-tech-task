@@ -29,6 +29,13 @@ import { type Kysely, sql } from 'kysely';
  * not exist for this catalogue-authoring spec to depend on). It rides the SAME structural lock as
  * everything else in this file: the grant is a plain `UPDATE auth.app_user` scoped to the address
  * just signed in, reachable only because this whole route is reachable only in `test` mode.
+ *
+ * TASK-0009 extends it again with an optional `moderator: boolean`, granting `moderator` the
+ * identical way — same fail-closed `=== true` check, same scoped `UPDATE auth.app_user` shape,
+ * same lock. Both flags are independent fields on the SAME body: a caller may post either, both,
+ * or neither in one request (nothing in the data model makes the two capabilities mutually
+ * exclusive — SPEC-0001's own actor table: "holding one capability implies nothing about the
+ * other" — so this route does not invent an exclusivity the product does not have).
  */
 
 /** The one path this route occupies. Namespaced under `/api/test/` so it is unmistakable in a
@@ -168,6 +175,7 @@ export function mountTestSessionRoute(
     const body = (await request.json()) as {
       readonly email?: unknown;
       readonly catalogueManager?: unknown;
+      readonly moderator?: unknown;
     };
     if (typeof body.email !== 'string' || body.email === '') {
       return Response.json({ error: 'email is required' }, { status: 400 });
@@ -218,6 +226,15 @@ export function mountTestSessionRoute(
     if (body.catalogueManager === true) {
       await sql`
         UPDATE auth.app_user SET catalogue_manager = true
+        WHERE identity_id = (SELECT id FROM auth.identity WHERE email = ${email})
+      `.execute(deps.db);
+    }
+
+    // Step 4b (TASK-0009, optional): grant `moderator` the identical way, independently of the
+    // grant above — see this file's header for why the two are not made mutually exclusive.
+    if (body.moderator === true) {
+      await sql`
+        UPDATE auth.app_user SET moderator = true
         WHERE identity_id = (SELECT id FROM auth.identity WHERE email = ${email})
       `.execute(deps.db);
     }

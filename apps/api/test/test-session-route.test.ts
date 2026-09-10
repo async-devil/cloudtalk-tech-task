@@ -337,4 +337,118 @@ describe('the e2e session-mock route is absent outside test mode', () => {
       expect(statements.some((s) => grantMatcher(s.sql))).toBe(false);
     });
   });
+
+  /**
+   * TASK-0009's own optional `moderator` field — the identical shape as `catalogueManager` above,
+   * proven the same way and for the same reason: a fake with no real `auth.app_user` row, so the
+   * captured SQL text is the only signal available.
+   *
+   * MUTATION PERFORMED AND RESTORED (ADR-0010), the exact same proof `catalogueManager`'s own note
+   * documents: changed `if (body.moderator === true)` in `src/runtime/test-session-route.ts` to a
+   * bare `if (body.moderator)`. "omitted" and "explicit false" both stayed GREEN under that
+   * mutation (both send a falsy value either way), so the stray-truthy-value case below is what
+   * actually distinguishes the two implementations — it goes red under the bare-truthy mutation and
+   * green under the strict `=== true` check. All four were re-run against the mutation (two stayed
+   * red, confirming they discriminate) before the guard was reverted to `=== true`.
+   */
+  describe('moderator (TASK-0009)', () => {
+    function grantMatcher(text: string): boolean {
+      return /update\s+auth\.app_user\s+set\s+moderator\s*=\s*true/i.test(text);
+    }
+
+    async function postSession(body: Record<string, unknown>) {
+      const statements: { sql: string; parameters: readonly unknown[] }[] = [];
+      const db = fakePostgresDb((sql, parameters) => {
+        statements.push({ sql, parameters });
+        return { rows: [] };
+      });
+      const app = buildApp({ mode: APP_MODE.Test, sessionMock: workingSessionMock({ db }) });
+      const response = await app.handle(
+        new Request(`http://localhost${TEST_SESSION_ROUTE_PATH}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        }),
+      );
+      return { response, statements };
+    }
+
+    it('grants moderator when moderator: true is posted', async () => {
+      const { response, statements } = await postSession({
+        email: SESSION_MOCK_EMAIL,
+        moderator: true,
+      });
+
+      expect(response.status).toBe(204);
+      expect(statements.some((s) => grantMatcher(s.sql))).toBe(true);
+      // Scoped to the address this request just authenticated, not a blanket UPDATE.
+      const grant = statements.find((s) => grantMatcher(s.sql));
+      expect(grant?.parameters).toContain(SESSION_MOCK_EMAIL);
+    });
+
+    it('leaves moderator untouched when the field is omitted', async () => {
+      const { response, statements } = await postSession({ email: SESSION_MOCK_EMAIL });
+
+      expect(response.status).toBe(204);
+      expect(statements.some((s) => grantMatcher(s.sql))).toBe(false);
+    });
+
+    it('leaves moderator untouched when explicitly false', async () => {
+      const { response, statements } = await postSession({
+        email: SESSION_MOCK_EMAIL,
+        moderator: false,
+      });
+
+      expect(response.status).toBe(204);
+      expect(statements.some((s) => grantMatcher(s.sql))).toBe(false);
+    });
+
+    // The case that actually distinguishes strict `=== true` from a bare truthy check (see the
+    // mutation note above) — a stray non-boolean truthy value must NOT grant the capability.
+    it('leaves moderator untouched for a non-boolean truthy value', async () => {
+      const { response, statements } = await postSession({
+        email: SESSION_MOCK_EMAIL,
+        moderator: 'true',
+      });
+
+      expect(response.status).toBe(204);
+      expect(statements.some((s) => grantMatcher(s.sql))).toBe(false);
+    });
+  });
+
+  /**
+   * Both capability flags in ONE request body — TASK-0009's own dispatch note: "nothing prevents
+   * that today, don't add an artificial exclusivity." Proven together so a future change that
+   * makes one grant short-circuit the other (e.g. an `else if`) goes red here.
+   */
+  it('grants both catalogue_manager and moderator when both are posted true in one request', async () => {
+    const statements: { sql: string; parameters: readonly unknown[] }[] = [];
+    const db = fakePostgresDb((sql, parameters) => {
+      statements.push({ sql, parameters });
+      return { rows: [] };
+    });
+    const app = buildApp({ mode: APP_MODE.Test, sessionMock: workingSessionMock({ db }) });
+
+    const response = await app.handle(
+      new Request(`http://localhost${TEST_SESSION_ROUTE_PATH}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          email: SESSION_MOCK_EMAIL,
+          catalogueManager: true,
+          moderator: true,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(204);
+    expect(
+      statements.some((s) =>
+        /update\s+auth\.app_user\s+set\s+catalogue_manager\s*=\s*true/i.test(s.sql),
+      ),
+    ).toBe(true);
+    expect(
+      statements.some((s) => /update\s+auth\.app_user\s+set\s+moderator\s*=\s*true/i.test(s.sql)),
+    ).toBe(true);
+  });
 });

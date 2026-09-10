@@ -41,6 +41,13 @@ export interface AuthenticateAsOptions {
    * this spec to depend on. Omitted or `false` behaves exactly as before this field existed.
    */
   readonly catalogueManager?: boolean;
+  /**
+   * TASK-0009: the identical shortcut for the `moderator` capability (`test-session-route.ts`'s
+   * own `moderator` field) — what `moderation.spec.ts` uses to sign in as a moderator without
+   * seed data. Independent of `catalogueManager`: either, both, or neither may be `true` in one
+   * call, mirroring the route's own "no artificial exclusivity" stance.
+   */
+  readonly moderator?: boolean;
 }
 
 /**
@@ -64,6 +71,7 @@ export async function authenticateAs(
       ...(options.catalogueManager !== undefined
         ? { catalogueManager: options.catalogueManager }
         : {}),
+      ...(options.moderator !== undefined ? { moderator: options.moderator } : {}),
     },
   });
   if (response.status() !== 204) {
