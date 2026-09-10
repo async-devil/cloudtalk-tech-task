@@ -39,7 +39,10 @@ describe('observability config slice', () => {
       sources: [source({})],
     });
     await expect(attempt).rejects.toThrow(ConfigError);
-    const err = await attempt.catch((e: unknown) => e as ConfigError);
+    const err = await attempt.catch((e: unknown) => e);
+    if (!(err instanceof ConfigError)) {
+      throw new Error(`expected composeConfig to reject with a ConfigError, got: ${String(err)}`);
+    }
     const keys = err.issues.map((issue) => issue.key);
     expect(keys).toContain('OTEL_EXPORTER_OTLP_ENDPOINT');
     expect(keys).toContain('DEPLOYMENT_ENVIRONMENT');
