@@ -108,3 +108,66 @@ test.describe('a11y: the sign-in flow', () => {
     await expect(page.getByLabel('Email address')).toBeVisible();
   });
 });
+
+/**
+ * TASK-0004's own acceptance criterion ("the rating control is operable by keyboard alone and
+ * announces its value; asserted in the accessibility e2e pass") and SPEC-0001's non-functional
+ * floor ("the e2e accessibility pass covers S2, S3, S4 and S8"). S2 (the catalogue) needs no
+ * seeded product — its controls are reachable on a genuinely empty catalogue, which is this
+ * checkout's actual state before TASK-0006 lands — so it is covered here now. S3/S4's star-rating
+ * keyboard test is a real product page away, and hits the identical blocker
+ * `catalogue-and-review.spec.ts`'s header documents in full: no product-seeding mechanism is
+ * reachable from this e2e suite yet. Declared skipped from the outside for the same reason that
+ * spec's second test is, rather than left unmentioned.
+ */
+test.describe('a11y: the catalogue (S2)', () => {
+  test('every interactive control on / shows a visible focus-visible ring on keyboard focus', async ({
+    page,
+    authenticate,
+  }) => {
+    await authenticate(`a11y-catalogue-${Date.now()}@example.test`);
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Catalogue' })).toBeVisible();
+
+    const controls = page.locator('main input:visible, main select:visible, main button:visible');
+    const count = await controls.count();
+    expect(
+      count,
+      'too few interactive controls on / — the assertion would be vacuous',
+    ).toBeGreaterThanOrEqual(2);
+
+    for (let index = 0; index < count; index += 1) {
+      const control = controls.nth(index);
+      const description = await control.evaluate(
+        (element) =>
+          `${element.tagName.toLowerCase()}[name=${(element as HTMLInputElement).name || '?'}]`,
+      );
+      await control.focus();
+      const outline = await control.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { width: Number.parseFloat(style.outlineWidth), style: style.outlineStyle };
+      });
+      expect(outline.width, `${description} paints no focus outline`).toBeGreaterThan(0);
+      expect(outline.style, `${description} paints outline-style: none`).not.toBe('none');
+    }
+  });
+
+  test('the search, category and sort controls are reachable by their accessible names', async ({
+    page,
+    authenticate,
+  }) => {
+    await authenticate(`a11y-catalogue-labels-${Date.now()}@example.test`);
+    await page.goto('/');
+
+    await expect(page.getByLabel('Search')).toBeVisible();
+    await expect(page.getByLabel('Category')).toBeVisible();
+    await expect(page.getByLabel('Sort')).toBeVisible();
+  });
+
+  test.skip('S4: the star-rating control is operable by keyboard alone and announces its value', async () => {
+    // Blocked on the same missing product-seeding mechanism `catalogue-and-review.spec.ts`
+    // documents in full — reaching S4 requires a real product page to open a review form on.
+    // Flip this back to `test(...)` alongside that file's skipped review-submission test, once
+    // either TASK-0006's seed lands or a sanctioned e2e product-seeding mechanism exists.
+  });
+});
