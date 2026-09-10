@@ -19,8 +19,19 @@ export const SIGN_IN_ROUTE = '/sign-in';
  *
  * Auth callback paths are here because the user arrives on them BY DEFINITION without a session
  * (that is what they are for); sending them to `/sign-in` would break the magic-link flow.
+ *
+ * `/` and `/products` (TASK-0004, SPEC-0001): the catalogue and product-detail screens are
+ * Visitor surface (SPEC-0001's own actor table — "No session cookie ⇒ browse the catalogue, open a
+ * product, read reviews") and J1 is explicit that browsing costs no session at any point. This
+ * covers `/products/$productSlug` WITH `?review=new`/`?review=edit` too, on purpose: J3's sign-in
+ * round trip returns the browser to exactly that URL, and if the route were guarded the guard
+ * would just bounce it to `/sign-in` again with itself as `returnTo` — an infinite loop.
+ * Read/write is enforced at the ACTION, not the route: `reviews.submit`/`update`/`remove` still
+ * 401 anonymously (rule 15), and `shared/errors`' cache-level 401 subscriber is what turns that
+ * into the sign-in redirect — the route guard's job here is only to not pre-empt an anonymous read
+ * that the api already serves.
  */
-export const PUBLIC_ROUTES: readonly string[] = [SIGN_IN_ROUTE, '/auth/callback'];
+export const PUBLIC_ROUTES: readonly string[] = [SIGN_IN_ROUTE, '/auth/callback', '/', '/products'];
 
 /** Prefix matching, not equality: `/auth/callback/magic-link` is the same public surface. The
  * `/` guard on the prefix keeps `/sign-in-somewhere-else` from matching `/sign-in`. */

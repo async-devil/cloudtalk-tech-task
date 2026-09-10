@@ -1,5 +1,6 @@
 import { ERROR_CODE } from '@repo/kernel';
-import type { QueryClient } from '@tanstack/react-query';
+import { partialMatchKey, type QueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../query-keys/index.js';
 import { toApiError } from './api-error.js';
 
 /** Where the user was when the 401 landed, in the shape the `/sign-in` route's `returnTo` search
@@ -24,6 +25,18 @@ export type UnauthorizedHandler = (returnTo: string) => void;
  * read, and a 401 that only redirected on reads would strand the user on a form that silently
  * refuses to submit.
  *
+ * THE SESSION BOOTSTRAP QUERY ITSELF IS EXCLUDED (TASK-0004, added once `/` and `/products` became
+ * Visitor surface — SPEC-0001 J1). Before that, every `useQuery(sessionBootstrapQueryOptions)` ran
+ * only on an already-guarded route, so its 401 and "session expired" were the same fact. That
+ * stopped being true the moment a PUBLIC screen started calling `useSession()` on purpose (the
+ * catalogue's "Signed in as…" line, `product-detail`'s own-review/sign-in-prompt branch): an
+ * anonymous visitor's bootstrap call 401s as its NORMAL, expected answer — `shared/session`'s own
+ * `loadSessionBootstrap` already treats that 401 as "no session", not an error — and without this
+ * exclusion this subscriber disagreed, bounced the visitor to `/sign-in`, and defeated the whole
+ * point of the route being public. Every OTHER query and every mutation is unaffected: a 401 from
+ * `reviews.submit`/`update`/`remove` (or any future session-required read) still means exactly what
+ * it always meant — the session ended mid-action — and still redirects.
+ *
  * @returns an unsubscribe function (both caches), so a test — or a future multi-root host — can
  * tear the subscription down.
  */
@@ -40,9 +53,13 @@ export function installUnauthorizedRedirect(
   };
 
   const unsubscribeQueries = queryClient.getQueryCache().subscribe((event) => {
-    if (event.type === 'updated' && event.action.type === 'error') {
-      handle(event.action.error);
+    if (event.type !== 'updated' || event.action.type !== 'error') {
+      return;
     }
+    if (partialMatchKey(event.query.queryKey, queryKeys.session.bootstrap())) {
+      return;
+    }
+    handle(event.action.error);
   });
   const unsubscribeMutations = queryClient.getMutationCache().subscribe((event) => {
     if (event.type === 'updated' && event.action.type === 'error') {

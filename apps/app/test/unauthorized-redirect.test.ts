@@ -9,6 +9,7 @@
 import { ERROR_CODE } from '@repo/kernel';
 import { MutationObserver, QueryClient } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
+import { apiQuery } from '../src/shared/api/index.js';
 import { ApiError, installUnauthorizedRedirect } from '../src/shared/errors/index.js';
 
 function client(): QueryClient {
@@ -73,6 +74,38 @@ describe('installUnauthorizedRedirect', () => {
         })
         .catch(() => undefined);
     }
+
+    expect(redirects).toEqual([]);
+  });
+
+  /**
+   * TASK-0004: `/` and `/products/$productSlug` are Visitor surface (SPEC-0001 J1), and both call
+   * `useSession()` on purpose (the catalogue's "Signed in as…" line, `product-detail`'s
+   * sign-in-prompt branch) — so the session bootstrap query now 401s as its ORDINARY answer for an
+   * anonymous visit to a PUBLIC page, not as a signal that a session just expired. Without this
+   * exclusion, every anonymous visitor to those screens got bounced straight to `/sign-in`, which
+   * is the exact bug this test pins (mutated by hand per ADR-0010: deleting the
+   * `partialMatchKey(...)` guard in `unauthorized-redirect.ts` turns this red — `redirects` comes
+   * back `['/']` instead of `[]` — before the guard was restored).
+   */
+  it('does NOT redirect when the SESSION BOOTSTRAP query itself 401s — that is "no session", not "session expired"', async () => {
+    const queryClient = client();
+    const redirects: string[] = [];
+    installUnauthorizedRedirect(
+      queryClient,
+      (returnTo) => redirects.push(returnTo),
+      () => '/',
+    );
+
+    // The REAL live key `useQuery(sessionBootstrapQueryOptions)` registers under — not a
+    // hand-copied literal, for the same reason `query-keys.test.ts` insists on it: a copy could be
+    // wrong in exactly the way the code under test is.
+    await queryClient
+      .fetchQuery({
+        queryKey: apiQuery.session.bootstrap.queryOptions().queryKey,
+        queryFn: () => Promise.reject(new ApiError(ERROR_CODE.Unauthorized, 'nope', 401)),
+      })
+      .catch(() => undefined);
 
     expect(redirects).toEqual([]);
   });

@@ -67,43 +67,60 @@ describe('PUBLIC_ROUTES', () => {
   it('matches the declared public routes and their subpaths', () => {
     expect(isPublicRoute(SIGN_IN_ROUTE)).toBe(true);
     expect(isPublicRoute('/auth/callback/magic-link')).toBe(true);
+    // TASK-0004: the catalogue (exact `/`) and every product-detail path (including the S4 form's
+    // `?review=new`/`edit` search-param state, which does not change the pathname) are Visitor
+    // surface — SPEC-0001's J1, "no session at any point".
+    expect(isPublicRoute('/')).toBe(true);
+    expect(isPublicRoute('/products/sony-wh-1000xm5')).toBe(true);
   });
 
   it('does not match a path that merely starts with a public route name', () => {
     expect(isPublicRoute('/sign-in-elsewhere')).toBe(false);
-    expect(isPublicRoute('/')).toBe(false);
+    expect(isPublicRoute('/productsx')).toBe(false);
   });
 
   it('declares the public surface in one place', () => {
-    expect(PUBLIC_ROUTES).toEqual([SIGN_IN_ROUTE, '/auth/callback']);
+    expect(PUBLIC_ROUTES).toEqual([SIGN_IN_ROUTE, '/auth/callback', '/', '/products']);
   });
 });
 
 describe('the root guard, through a real router navigation', () => {
   /**
    * The attempted location is asserted with a SEARCH STRING on it, and that detail is
-   * load-bearing. The 401 the stub returns also reaches the cache-level subscriber, which
-   * redirects to `/sign-in` too — reading `returnTo` from `window.location`, which in this
-   * environment is a bare `/`. Verified by mutation: with the session guard's redirect deleted,
-   * an assertion of `returnTo=/` still passed (the subscriber had done it), while the exact
-   * `/?filter=open` below went red. A test that cannot tell the two mechanisms apart is a test
-   * that proves neither.
+   * load-bearing — it is what tells this assertion apart from the GUARD's redirect landing by
+   * coincidence rather than by carrying the right `returnTo`.
+   *
+   * The 401 the stub returns does NOT also reach `shared/errors`' cache-level subscriber
+   * (`installUnauthorizedRedirect`): that subscriber deliberately excludes the session bootstrap
+   * query itself (TASK-0004, `unauthorized-redirect.test.ts`'s own test for it) — a public page's
+   * anonymous bootstrap 401 is its NORMAL answer, not a "session expired" signal, and treating it
+   * as one is exactly the bug that exclusion exists to prevent. This route (`/some-protected-place`)
+   * is not public, so ONLY the guard's own `beforeLoad` redirect is what this test is proving.
    */
   it('redirects an unauthenticated visit into /sign-in carrying the exact attempted location', async () => {
     stub = stubBootstrapFetch(() => unauthorizedResponse());
 
-    const location = await navigateTo('/?filter=open');
+    // TASK-0004 made `/` (and `/products`) Visitor surface (SPEC-0001 J1), so neither can stand
+    // in for "a protected route" any more — this suite's job is proving the GUARD MECHANISM still
+    // works, not any particular screen's guardedness, so it targets a path that matches no route
+    // at all (never added to `PUBLIC_ROUTES`, and root's `beforeLoad` runs ahead of route matching
+    // either way — a not-found leaf does not skip an ancestor's `beforeLoad`).
+    const location = await navigateTo('/some-protected-place?filter=open');
 
     expect(location.pathname).toBe(SIGN_IN_ROUTE);
-    expect(decodeURIComponent(location.search)).toContain('returnTo=/?filter=open');
+    expect(decodeURIComponent(location.search)).toContain(
+      'returnTo=/some-protected-place?filter=open',
+    );
   });
 
-  it('lets a session reach the protected route', async () => {
+  it('lets a session reach a route that is not on PUBLIC_ROUTES', async () => {
     stub = stubBootstrapFetch(() => jsonResponse(bootstrapPayload()));
 
-    const location = await navigateTo('/');
+    const location = await navigateTo('/some-protected-place');
 
-    expect(location.pathname).toBe('/');
+    // Not redirected to /sign-in — the guard let the visit through once a session resolved. The
+    // path itself renders as a 404 (no route matches it), which is beside this test's point.
+    expect(location.pathname).toBe('/some-protected-place');
   });
 
   it('renders /sign-in without ever calling the api — a public route asks no questions', async () => {
