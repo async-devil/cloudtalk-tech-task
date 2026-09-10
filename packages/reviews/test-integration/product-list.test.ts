@@ -249,7 +249,12 @@ describe('listProducts / getProductBySlug (TASK-0003, SPEC-0003, ADR-0014)', () 
   // `OR position(lower(${input.query}) in lower(p.sku)) > 0` half of the filter — searching by
   // SKU would then find nothing, and the second assertion goes red.
   it('query matches by name or by SKU, case-insensitively', async () => {
-    const tag = `qry-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    // Uppercase throughout, including the prefix: `sku` is built directly from `tag` below, and
+    // `ck_product__sku_format` (SPEC-0002) admits only `[A-Z0-9-]`. A lowercase prefix here is
+    // what let a prior version of this test insert an invalid SKU and fail on the constraint
+    // instead of the assertion it meant to make (caught by CI, not by this suite running locally
+    // — a reminder that this is the one place these assertions actually execute).
+    const tag = `QRY-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
     const product = await createTestProduct(infra.db, { name: `Widget ${tag}`, sku: `SKU-${tag}` });
 
     const byName = await listProducts(infra.db, { ...BASE_INPUT, query: tag.toLowerCase() });
