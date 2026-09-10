@@ -35,6 +35,22 @@ export {
   CardTitle,
   cardVariants,
 } from './primitives/card.js';
+export {
+  Dialog,
+  DialogClose,
+  type DialogCloseProps,
+  DialogContent,
+  type DialogContentProps,
+  DialogDescription,
+  type DialogDescriptionProps,
+  DialogFooter,
+  DialogHeader,
+  type DialogProps,
+  DialogTitle,
+  type DialogTitleProps,
+  DialogTrigger,
+  type DialogTriggerProps,
+} from './primitives/dialog.js';
 export { FieldError, type FieldErrorProps, fieldErrorVariants } from './primitives/field-error.js';
 export { Input, type InputProps, type InputVariants, inputVariants } from './primitives/input.js';
 export { Label, type LabelProps, labelVariants } from './primitives/label.js';
@@ -44,3 +60,4 @@ export {
   type SpinnerVariants,
   spinnerVariants,
 } from './primitives/spinner.js';
+export { StarRating, type StarRatingProps } from './primitives/star-rating.js';
