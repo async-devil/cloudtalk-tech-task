@@ -33,7 +33,8 @@ module's tests, not in a new scanner here.
 | `migration-ddl.ts` | Hand-written migration SQL follows the naming/structure conventions: identifier length, constraint naming and presence, no `IF NOT EXISTS`, no enum types, root-vs-runner migration discipline, timestamp/boolean column shape, the `updated_at` trigger requirement, storage-parameter defaults, and a cross-check against the ADR-0006 data-lifecycle registry (`data-lifecycle-registry.cjs`). Twenty named rules in the `RULE` catalog, one per ADR bullet. | ADR-0006, ADR-0011 |
 | `gate-integrity.ts` | No commented-out step inside a workflow's `jobs:` mapping, and every job id `required-gates.json` names for a workflow file actually exists in it (and vice versa: a required workflow file that vanished entirely is itself a violation). | ADR-0010 |
 | `docs-index.ts` | Generates and validates `docs/README.md`: frontmatter schema per document kind, frozen section order, sequential per-folder ids, and whether an `adr:`/`supersedes` reference resolves to a record that exists. `--write` regenerates the index; with no flag it only checks. | The documentation contract (`CONTRIBUTING.md`), ADR-0015 |
-| `selftest.ts` | The gates' own gate: runs `no-core-logging`, `no-cjs-exports-map`, `unjustified-any-gate`, `telemetry-map` and `gate-integrity` each against a clean fixture (must pass) and a violating one (must fail) — see Fixture honesty below for the two gates this excludes. | ADR-0010 |
+| `typecheck-tests.ts` | Every package's `test/` and `test-integration/` directories are typechecked. The inherited `typecheck` task structurally cannot: a package's own `tsconfig.json` carries `include: ["src"]` because that same config drives `build`. vitest transpiles rather than typechecks, and a container suite may not run locally at all — so before this gate, a type error in a durability harness reached CI as a runtime failure in a file nothing had compiled. Per-package from inside one; a repo-wide sweep when given a root. | ADR-0010 |
+| `selftest.ts` | The gates' own gate: runs `no-core-logging`, `no-cjs-exports-map`, `unjustified-any-gate`, `telemetry-map`, `typecheck-tests` and `gate-integrity` each against a clean fixture (must pass) and a violating one (must fail) — see Fixture honesty below for the two gates this excludes. | ADR-0010 |
 | `run-integration-suite.ts` | Not an architecture rule: the one "is Docker reachable" decision every package's `test-integration` task shares — skip loudly with no daemon locally, hard-fail with no daemon in CI, so a Testcontainers suite can never quietly not run. | — |
 | `module-registry.cjs` | Not a gate: the registry both `.dependency-cruiser.cjs` and `depcruise-completeness` build their rules from — tiers, sanctioned tier-2 edges, third-party SDK ownership, sanctioned subpath exports. | ADR-0001, ADR-0003 |
 | `data-lifecycle-registry.cjs` | Not a gate: the `schema.table` → lifecycle-class map `migration-ddl.ts` reads to enforce the evidence-needs-a-horizon rule and the inverse staleness check. | ADR-0006 |
@@ -58,6 +59,7 @@ bun tools/arch-checks/src/no-cjs-exports-map.ts [repoRoot]
 bun tools/arch-checks/src/unjustified-any-gate.ts [repoRoot]
 bun tools/arch-checks/src/telemetry-map.ts [repoRoot]
 bun tools/arch-checks/src/migration-ddl.ts [repoRoot]
+bun tools/arch-checks/src/typecheck-tests.ts [repoRoot]
 bun tools/arch-checks/src/gate-integrity.ts [workflowsDir] [requiredGatesPath]
 bun tools/arch-checks/src/docs-index.ts [--write]
 bun tools/arch-checks/src/selftest.ts
@@ -69,10 +71,12 @@ runs it from that package's own directory (it reads `process.cwd()`).
 
 ## Fixture honesty
 
-`selftest.ts` proves five of its six checkers on both a clean and a deliberately violating
-fixture — the half that matters, since a rule that silently stopped matching looks exactly like a
-codebase that stopped violating it. Two gates ship no such proof, and both absences are stated
-plainly rather than glossed over:
+`selftest.ts` proves six gates on both a clean and a deliberately violating fixture —
+`no-core-logging`, `no-cjs-exports-map`, `unjustified-any-gate`, `telemetry-map`,
+`typecheck-tests` and `gate-integrity`. The violating half is the one that matters, since a rule
+that silently stopped matching looks exactly like a codebase that stopped violating it.
+(`depcruise` has its own equivalent proof in `run-fixture-tests.ts`.) Two gates ship no such
+proof, and both absences are stated plainly rather than glossed over:
 
 - **`migration-ddl.ts`** ships no fixture tree. It is exercised only against the repository's real
   migrations by the `root:migration-ddl` task — weaker than a red fixture, and `selftest.ts`'s own
@@ -122,10 +126,16 @@ every other module.
 
 ## CI wiring
 
-Every gate above (excluding `run-integration-suite.ts`, which is per-package rather than repo-wide)
-is a `root:*` task in the repository root `moon.yml`, run by `bun moon ci`:
-`depcruise`, `depcruise-selftest`, `arch-checks-selftest`, `docs-check`, `gate-integrity`,
-`no-core-logging`, `unjustified-any-gate`, `no-cjs-exports-map`, `migration-ddl`, `telemetry-map`.
+Every gate above (excluding `run-integration-suite.ts` and `typecheck-tests.ts`, which are
+per-package rather than repo-wide) is a `root:*` task in the repository root `moon.yml`, run by
+`bun moon ci`: `depcruise`, `depcruise-selftest`, `arch-checks-selftest`, `docs-check`,
+`gate-integrity`, `no-core-logging`, `unjustified-any-gate`, `no-cjs-exports-map`,
+`migration-ddl`, `telemetry-map`.
+
+`typecheck-tests` is an INHERITED task (`.moon/tasks/all.yml`), not a `root:*` one, for the same
+reason `test-integration` is: it needs each package's upstream `^:build` to have run, which only a
+per-project task can express — a root task has no upstream to wait on. It is still run by
+`bun moon ci`, once per project, and reported under that project's name.
 `tools/arch-checks/required-gates.json` currently requires the job ids `ci`, `docs-check` and
 `gate-integrity` to exist in `.github/workflows/ci.yml` — dropping one from that workflow without
 also editing the manifest is what `gate-integrity` itself is built to catch.

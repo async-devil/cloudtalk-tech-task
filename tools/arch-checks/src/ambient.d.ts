@@ -45,6 +45,9 @@ declare module 'node:fs' {
   export function existsSync(path: string): boolean;
   export function readFileSync(path: string, encoding: 'utf8'): string;
   export function writeFileSync(path: string, data: string, encoding?: 'utf8'): void;
+  /** `typecheck-tests.ts` removes the throwaway tsconfig it writes into each package, in a
+   * `finally` — the one place these scripts delete anything they created. */
+  export function unlinkSync(path: string): void;
   export interface Dirent {
     readonly name: string;
     isDirectory(): boolean;
