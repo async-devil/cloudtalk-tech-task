@@ -175,8 +175,12 @@ export function createAuth(deps: AuthDependencies): AuthHandle {
       VALUES (${identityId}::uuid, ${mintToken(TOKEN_PREFIX.User)})
       ON CONFLICT (identity_id) DO NOTHING
     `.execute(deps.db);
+    // Selects every column `appUserRowSchema` requires, not just the one this function returns —
+    // `rowAs` parses the whole row, so a narrower select here fails every sign-in with a schema
+    // error (found while verifying TASK-0006's seeded accounts against a real Postgres).
     const result = await sql`
-      SELECT app_user_id, token FROM auth.app_user WHERE identity_id = ${identityId}::uuid
+      SELECT app_user_id, token, catalogue_manager, moderator FROM auth.app_user
+      WHERE identity_id = ${identityId}::uuid
     `.execute(deps.db);
     return rowAs(appUserRowSchema, result.rows[0]).app_user_id;
   }
