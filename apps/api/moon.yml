@@ -16,6 +16,17 @@ tasks:
     options:
       cache: false
       runInCI: false
+  # Populates a realistic catalogue (TASK-0006) — accounts with each capability, products across
+  # categories, a spread of reviews, one rejected review, and a rebuilt rating projection. Needs
+  # the schema already migrated, same reachability requirement `migrate` has, same reason it is
+  # never implicit in CI.
+  seed:
+    command: 'bun src/db/seed.ts'
+    deps:
+      - '^:build'
+    options:
+      cache: false
+      runInCI: false
   # Renders `.env.example` from the composed config slice schemas and either writes it
   # (`-- --write`, the generator IS the writer — hand edits are what `env-example-check` below
   # exists to catch) or, with no args, diffs it against the committed file (exit 1 on drift).

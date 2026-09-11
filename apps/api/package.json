@@ -17,6 +17,7 @@
     "@repo/auth": "workspace:*",
     "@repo/config": "workspace:*",
     "@repo/contracts": "workspace:*",
+    "@repo/entities": "workspace:*",
     "@repo/jobs": "workspace:*",
     "@repo/kernel": "workspace:*",
     "@repo/messaging": "workspace:*",
