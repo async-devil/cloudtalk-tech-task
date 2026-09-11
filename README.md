@@ -11,7 +11,10 @@ submission traced end to end.
 
 ## Run it
 
-You need Docker and [Bun](https://bun.sh). Nothing else, and no secrets.
+You need Docker and [Bun](https://bun.sh) **1.3.14 or newer** (the version pinned in
+[`.moon/toolchains.yml`](.moon/toolchains.yml)) — nothing else, and no secrets. Older Bun lacks
+`Bun.RedisClient`, which `@repo/messaging` uses directly; the API fails at startup with `undefined
+is not a constructor` on a too-old Bun. Check with `bun --version`; upgrade with `bun upgrade`.
 
 ```bash
 bun run setup
@@ -51,6 +54,51 @@ docs/        Decision records, implementation tasks, and the brief being answere
 
 Modules talk through typed ports or events, never through each other's internals, and the rule is
 machine-enforced rather than aspirational — see below.
+
+## Endpoints and user flow
+
+Everything the SPA calls is one contract, [`packages/contracts`](packages/contracts/src/contracts/app-contract.ts)
+— the source of truth for request/response shapes; this table is just an index into it. Two
+namespaces are anonymous reads, one write needs a session, and two are gated behind a capability
+(`catalogue_manager` / `moderator`) enforced server-side regardless of what the session bootstrap
+told the client to render (ADR-0018).
+
+| Namespace.procedure | HTTP | Path | Who |
+|---|---|---|---|
+| `session.bootstrap` | GET | `/session/bootstrap` | any signed-in session |
+| `products.list` | GET | `/products` | anonymous |
+| `products.get` | GET | `/products/{productSlug}` | anonymous |
+| `products.create` | POST | `/products` | `catalogue_manager` |
+| `products.update` | PATCH | `/products/{productSlug}` | `catalogue_manager` |
+| `reviews.listForProduct` | GET | `/products/{productSlug}/reviews` | anonymous |
+| `reviews.submit` | POST | `/products/{productSlug}/reviews` | signed-in session |
+| `reviews.update` | PATCH | `/reviews/{reviewToken}` | the review's own author |
+| `reviews.remove` | DELETE | `/reviews/{reviewToken}` | the review's own author |
+| `reviews.moderationList` | GET | `/moderation/reviews` | `moderator` |
+| `reviews.reject` | POST | `/reviews/{reviewToken}/reject` | `moderator` |
+| `reviews.restore` | POST | `/reviews/{reviewToken}/restore` | `moderator` |
+
+Sign-in itself is not on this contract: `/api/auth/*` is [better-auth](https://www.better-auth.com/)'s
+own handler, mounted separately in [`apps/api/src/runtime/build-app.ts`](apps/api/src/runtime/build-app.ts),
+and the magic-link send/verify pair lives there.
+
+**The reviewer journey** (SPEC-0001's journeys, screens `S1`–`S6`): land on the catalogue
+(anonymous `products.list`) → open a product (`products.get` + `reviews.listForProduct`, still
+anonymous) → sign in with a magic link (`/api/auth/*`, no password) → `session.bootstrap` tells the
+router onboarding is done and which affordances to render → submit a review (`reviews.submit`) →
+edit or delete only your own (`reviews.update` / `reviews.remove`). A submitted review is visible
+immediately in `reviews.listForProduct` (the authoritative table); the product's average rating on
+`products.list`/`products.get` reads a separate, eventually-consistent projection that a background
+worker recomputes (ADR-0014) — see [ARCHITECTURE.md](ARCHITECTURE.md)'s end-to-end trace of exactly
+this submission.
+
+**The catalogue-manager journey** (screen `S7`): everything above, plus `products.create` and
+`products.update` for the create/edit product screens — gated by `auth.app_user.catalogue_manager`,
+not by the client-side `canManageCatalogue` hint.
+
+**The moderator journey** (screen `S8`): `reviews.moderationList` to see flagged/pending reviews,
+`reviews.reject` / `reviews.restore` to act on one — gated by `auth.app_user.moderator`, independent
+of the catalogue-manager capability.
 
 ## The decisions
 
