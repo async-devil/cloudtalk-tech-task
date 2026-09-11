@@ -161,6 +161,15 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # `bun run e2e` never goes through moon (see this job's header comment), so nothing else
+      # builds the dist/ output every package this stack imports needs — `apps/app/e2e/harness/
+      # start-api-server.ts` spawns `apps/api`'s migrator and composition root directly via `bun`,
+      # which resolves `@repo/config` et al. by their built output, not their source. This is
+      # exactly `apps/app/moon.yml`'s own `e2e` task's `deps: ['^:build', 'api:build']` — moon's
+      # `build` task itself carries no `runInCI: false`, so it runs here even though `e2e` cannot.
+      - name: Build the workspace packages this stack needs
+        run: bun moon run app:build api:build
+
       # The suite's two projects are both `browserName: chromium` (apps/app/e2e/playwright.config.ts)
       # — no other browser is ever launched, so only this one needs installing.
       - name: Install Playwright's Chromium browser
