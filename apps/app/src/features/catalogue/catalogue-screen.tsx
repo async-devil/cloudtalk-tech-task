@@ -70,10 +70,16 @@ export function CatalogueScreen({ search, onSearchChange }: CatalogueScreenProps
       <div className="flex items-baseline justify-between gap-2">
         <h1 className="text-display">Catalogue</h1>
         <div className="flex items-center gap-3">
-          {session !== undefined && (
+          {session !== undefined ? (
             <p className="text-caption text-content-muted" data-testid="session-user-token">
               Signed in as {session.userToken}
             </p>
+          ) : (
+            <Button type="button" variant="outline" asChild>
+              <Link to="/sign-in" search={{ returnTo: '/' }} data-testid="sign-in-link">
+                Sign in
+              </Link>
+            </Button>
           )}
           {session?.canManageCatalogue === true && (
             <Button type="button" asChild>
