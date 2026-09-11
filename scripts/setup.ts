@@ -105,10 +105,13 @@ async function main(): Promise<void> {
 
   log(`starting ${COMPOSE_SERVICES.join(', ')} (docker compose)`);
   runToCompletion(
-    'docker',
-    ['compose', '-f', COMPOSE_FILE, 'up', '-d', '--wait', ...COMPOSE_SERVICES],
+    'sudo',
+    ['docker', 'compose', '-f', COMPOSE_FILE, 'up', '-d', '--wait', ...COMPOSE_SERVICES],
     process.env,
   );
+
+  log('building workspace packages');
+  runToCompletion(`${REPO_ROOT}/node_modules/.bin/moon`, ['run', 'app:build', 'api:build'], process.env);
 
   const env = { ...process.env, ...RUNTIME_ENV };
 
