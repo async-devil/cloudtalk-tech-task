@@ -5,32 +5,32 @@ on Bun, Elysia, Postgres and React.
 
 This repository answers [the assignment brief](docs/assignment.md). The brief asks for the thought
 process and the trade-offs behind the implementation; those live in [`docs/adr/`](docs/adr/), one
-record per decision, each with the alternatives that were rejected and why. This file is the map.
+record per decision, each with the alternatives that were rejected and why. This file is the map;
+[ARCHITECTURE.md](ARCHITECTURE.md) is the narrative walk through it, including one review
+submission traced end to end.
 
 ## Run it
 
 You need Docker and [Bun](https://bun.sh). Nothing else, and no secrets.
 
 ```bash
-bun install
-docker compose -f deploy/compose/dev.yml up -d
-bun moon run api:migrate
-bun moon run api:dev
+bun run setup
 ```
 
-The API comes up on `http://localhost:3000` in `test` mode — real Postgres and Redis, stubs for
-everything that would otherwise need a credential. `bun moon run app:dev` starts the SPA on
-`http://localhost:5173`. Sign-in is a magic link; in `test` mode the link is printed to the API's
-log rather than emailed, so you can complete the flow with no mail provider.
-
-Grafana, with traces and metrics already flowing, is on `http://localhost:3001`.
+That one command brings up Postgres and Redis, applies the migrations, seeds a realistic
+catalogue, starts the API and the SPA, and prints the URL to open. It is idempotent — running it
+again does not duplicate seed data. The API comes up in `test` mode — real Postgres and Redis,
+stubs for everything that would otherwise need a credential. Sign-in is a magic link; in `test`
+mode the link is printed to the API's log rather than emailed, so you can complete the flow with no
+mail provider. Two seeded accounts are printed at the end for exercising the capability-gated
+screens: a `catalogue_manager` and a `moderator`.
 
 ## How it is put together
 
 ```
 apps/api     Bun + Elysia. The HTTP edge, the composition root, health probes.
 apps/app     React 19 + Vite + TanStack Router/Query. Feature slices over a shared kernel.
-packages/    Ten modules, each a bounded context (see the table below).
+packages/    Eleven modules, each a bounded context (see the table below).
 tools/       The gates that keep the architecture honest, and the extraction proof.
 docs/        Decision records, implementation tasks, and the brief being answered.
 ```
@@ -47,6 +47,7 @@ docs/        Decision records, implementation tasks, and the brief being answere
 | `jobs` | The durability spine: stage helpers, transactional outbox, reconciler, dead-letter queue. |
 | `auth` | Magic-link authentication, session resolution, credential retention. |
 | `styles` | Design tokens and the vendored primitives built on them. |
+| `reviews` | The catalogue and review bounded context: products, reviews, moderation, and the rating projection. |
 
 Modules talk through typed ports or events, never through each other's internals, and the rule is
 machine-enforced rather than aspirational — see below.

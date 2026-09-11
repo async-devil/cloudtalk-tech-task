@@ -9,9 +9,9 @@ One deployable system, composed of workspace modules, each a bounded context. Fo
 imports only ever point down them:
 
 ```
-        apps/api   apps/app          composition roots — no domain logic
+        apps/api   apps/app                  composition roots — no domain logic
               ↓
-  persistence  jobs  auth  styles     capability modules
+  persistence  jobs  auth  styles  reviews    capability modules
               ↓
  contracts  entities  observability  config  messaging    facades
               ↓
@@ -107,8 +107,73 @@ steps are in [CONTRIBUTING.md](CONTRIBUTING.md), and the registry edit they end 
 a reviewed diff, because a new bounded context is an architectural change and that file is where a
 reviewer sees it.
 
+## One review submission, end to end
+
+The three lifecycles above are abstract; this is the concrete path a `POST
+/api/products/{slug}/reviews` takes, module by module, from the request to the aggregate a later
+page load reads.
+
+```
+1. apps/api (HTTP edge)        security headers, CORS, the `review-submission` rate-limit bucket
+                                 (ADR-0019), then the mounted oRPC handler.
+2. @repo/auth                   resolveRequestSession resolves the caller from the session cookie;
+                                 no session → 401 before anything below runs.
+3. @repo/contracts               Zod parses the body against `reviewSubmitInputSchema` — untrusted
+                                 becomes trusted here, and nowhere else (ADR-0004).
+4. apps/api/src/routes/reviews  reviews.router.ts's `submit` handler calls straight into the
+                                 bounded context — no SQL of its own, a router never reaches into
+                                 `reviews.*` tables (ADR-0001).
+5. @repo/reviews                 `submitReview` (ADR-0007's six steps): resolves the product,
+                                 reads for an existing (product_id, author_id) row OUTSIDE a
+                                 transaction (replay/conflict short-circuits here with no lock
+                                 taken), then — only for a genuine new review — opens ONE
+                                 transaction: advisory-lock claim, `INSERT INTO reviews.review`,
+                                 and `emitRatingRecompute` writing a `reviews.outbox` row, both in
+                                 the SAME commit (ADR-0006, ADR-0007). No external call and no
+                                 write-ahead step: there is no provider in this path.
+6. @repo/persistence              `rowAs` parses the inserted row against `reviewRowSchema` before
+                                 anything downstream sees it (ADR-0004).
+7. apps/api (HTTP edge)         the handler returns the review summary immediately — the commit
+                                 above is already durable, and nothing past this point is on the
+                                 request's critical path.
+```
+
+The response is back in the browser with the new review visible in the list (SPEC-0003: review
+reads hit the authoritative `reviews.review` table, never the aggregate) before the rating has
+recomputed at all. What happens next, off the request:
+
+```
+8. apps/api/src/runtime/        reviews-rating-worker.ts's outbox relay — `startOutboxRelay`
+   reviews-rating-worker.ts     (@repo/jobs) on a `@repo/messaging` (BullMQ) repeatable schedule —
+                                 claims the pending `reviews.outbox` row under its own advisory
+                                 lock and calls `apply`, which IS `recomputeProductRating`
+                                 (@repo/reviews) with no wrapper (SPEC-0004).
+9. @repo/reviews                 `recomputeProductRating` upserts `reviews.product_rating` from
+                                 `reviews.review` (never incrementally — ADR-0014) inside the
+                                 relay's own transaction, and records the `reviews.rating.recompute`
+                                 span/counter and the `reviews.rating.lag` histogram through
+                                 @repo/observability's facade (ADR-0009) — the lag is measured from
+                                 THIS outbox row's `created_at`, so a slow relay pass is visible,
+                                 not silent.
+10. @repo/jobs                   marks the outbox row processed in that same commit; a crash before
+                                 it just leaves the row `pending` for the next pass to pick up again
+                                 — replay-safe because `recomputeProductRating` reads the whole
+                                 table, not a delta.
+```
+
+A product page's next load reads `reviews.product_rating` fresh. Between step 7 and step 10 the
+average is briefly the pre-submission value while the review itself is already visible — the
+eventual-consistency trade [ADR-0014](docs/adr/ADR-0014-rating-aggregation-as-a-projection.md)
+makes deliberately, in exchange for never holding the review's own commit hostage to a recompute.
+The projection can be dropped and rebuilt at any time (`rebuildProductRating`, used by the seed
+script and available for an operational rebuild) because every input it needs — the reviews
+themselves — is still sitting in `reviews.review`, untouched by any of this.
+
 ## What is not here yet
 
-The reviews bounded context itself. The workspace, the spine, the edge and the gates are in place;
-the domain lands through the tasks in [`docs/tasks/`](docs/tasks/), starting with TASK-0002. This
-file will gain the end-to-end trace of one review submission when TASK-0007 closes.
+Nothing load-bearing. Every screen, route and worker the specifications describe is built; what
+remains is tracked follow-up, not a gap in the shape above — a real mail provider behind the
+magic-link port (ADR-0013) chief among them, plus a couple of Playwright specs still gated on
+wiring seed data into the e2e harness ([`docs/tasks/TASK-0004`](docs/tasks/TASK-0004-spa-product-and-review-screens.md)).
+[README.md](README.md)'s "Known limitations" section states the rest plainly. Where to add the NEXT
+bounded context is [CONTRIBUTING.md](CONTRIBUTING.md)'s job to answer, not this file's.
