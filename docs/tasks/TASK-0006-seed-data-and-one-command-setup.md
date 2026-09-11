@@ -1,7 +1,7 @@
 ---
 id: TASK-0006
 title: Seed data and a one-command local setup
-status: ready
+status: done
 adr: [ADR-0005]
 date: 2026-09-08
 ---
@@ -18,21 +18,21 @@ Production data loading. Fixture generation for tests, which each suite owns.
 
 ## Acceptance criteria
 
-- [ ] `bun run setup` on a clean checkout brings up containers, applies migrations, seeds, and
+- [x] `bun run setup` on a clean checkout brings up containers, applies migrations, seeds, and
       reports the URL to open.
-- [ ] The command is idempotent: running it twice does not duplicate seed rows — products are
+- [x] The command is idempotent: running it twice does not duplicate seed rows — products are
       matched by slug.
-- [ ] Seeded products carry a readable slug and a valid SKU, and exactly one seeded account holds
+- [x] Seeded products carry a readable slug and a valid SKU, and exactly one seeded account holds
       `catalogue_manager`, so both the authoring surface and its 403 are reachable after setup.
-- [ ] At least one seeded account holds `moderator`, and at least one seeded review is left
+- [x] At least one seeded account holds `moderator`, and at least one seeded review is left
       `rejected`, so the moderation screen's filter and its `rejected` view are both exercisable
       immediately after setup.
-- [ ] Seeded data exercises the projection — at least one product has enough reviews that the
+- [x] Seeded data exercises the projection — at least one product has enough reviews that the
       aggregate is not trivially equal to a single rating.
-- [ ] Seeded ratings are not uniformly distributed; the product list's sort is visibly meaningful.
-- [ ] The README's setup section is the command and nothing else, and a reviewer following it on a
+- [x] Seeded ratings are not uniformly distributed; the product list's sort is visibly meaningful.
+- [x] The README's setup section is the command and nothing else, and a reviewer following it on a
       machine with only Docker and Bun succeeds.
-- [ ] Sign-in works after setup with no secrets configured, in `test` mode.
+- [x] Sign-in works after setup with no secrets configured, in `test` mode.
 
 ## Notes
 

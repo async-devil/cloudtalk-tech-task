@@ -55,8 +55,8 @@ code.
 | [TASK-0003](tasks/TASK-0003-products-and-reviews-api.md) | The products and reviews API surface | done | ADR-0004, ADR-0008, ADR-0018 |
 | [TASK-0004](tasks/TASK-0004-spa-product-and-review-screens.md) | SPA — product list, product detail, and the review submission flow | in-progress | ADR-0008, ADR-0012 |
 | [TASK-0005](tasks/TASK-0005-rating-aggregation-worker.md) | The rating aggregation worker | done | ADR-0007, ADR-0014 |
-| [TASK-0006](tasks/TASK-0006-seed-data-and-one-command-setup.md) | Seed data and a one-command local setup | ready | ADR-0005 |
-| [TASK-0007](tasks/TASK-0007-project-readme-and-writeup.md) | Project README and the architecture write-up | draft | — |
+| [TASK-0006](tasks/TASK-0006-seed-data-and-one-command-setup.md) | Seed data and a one-command local setup | done | ADR-0005 |
+| [TASK-0007](tasks/TASK-0007-project-readme-and-writeup.md) | Project README and the architecture write-up | done | — |
 | [TASK-0008](tasks/TASK-0008-catalogue-authoring.md) | Catalogue authoring — product creation and editing behind a capability | done | ADR-0016, ADR-0018 |
 | [TASK-0009](tasks/TASK-0009-review-moderation.md) | Review moderation — reject, restore, and the moderator's screen | done | ADR-0018 |
 
