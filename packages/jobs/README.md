@@ -10,8 +10,9 @@ ADR-0006 retention seam that purges the spine's own evidence tables. This packag
 parameterized over caller-owned tables (`PipelineTableContract`) — it never owns a pipeline's
 domain data, only the generic mechanics every pipeline needs.
 
-`packages/example-context` is the living template that instantiates this spine end to
-end; this package's own suites prove the spine's primitives in isolation.
+`packages/reviews` is the living template that instantiates this spine end to
+end (its outbox-driven rating recompute); this package's own suites prove the spine's primitives
+in isolation.
 
 **When NOT to use this.** A pipeline's own domain data, its business rules, or what a stage's
 payload MEANS never belongs here — the `PipelineTableContract` parameterization exists precisely so
@@ -154,8 +155,8 @@ from the `@repo/entities` consts, and creates `jobs.dead_letter`. Runs after
   caller's health probe blind to these three workers and forced anyone probing their schedules to
   re-derive private id formulas — the drift that makes a "missing scheduler" check match nothing
   and report healthy forever. Consumers read the registration facts; they never reconstruct them.
-  Test: `packages/example-context/test-integration/check-health.test.ts` (the consumer-side scope
-  assertions).
+  `apps/api/src/runtime/reviews-rating-worker.ts`'s `checkHealth` is the current consumer: it reads
+  each `ScheduledWorkerHandle`'s own `schedulerId`, never a re-derived one.
 
 - **INV-14** — `writeOutboxDeadLetter` (SPEC-0004) writes ONLY the shared `jobs.dead_letter` row
   for an outbox pipeline — no instance-table update, no branch-table update, no

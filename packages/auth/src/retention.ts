@@ -7,8 +7,7 @@ import { AUTH_OUTCOME, observability, retentionPurgedCounter } from './internal/
 /** Job stage for the retention worker. Named
  * `auth_retention` — SPEC DEVIATION, reported: `@repo/observability`'s `withJobStageSpan` rejects
  * underscores (`NAME_SEGMENT_RE = /^[a-z0-9-]+$/`), so the underscore-joined form can never
- * construct — the identical deviation `packages/example-context` records for its branch stages.
- * `-` in place of `_`; same meaning. */
+ * construct — `-` in place of `_`; same meaning. */
 const AUTH_RETENTION_STAGE = 'auth-retention';
 const DEFAULT_BATCH_SIZE = 1_000;
 /** Guard so a mis-set horizon can never spin forever: batches * cap = the most rows one pass moves. */

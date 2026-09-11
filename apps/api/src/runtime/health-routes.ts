@@ -55,10 +55,10 @@ export interface HealthRoutesDependencies {
   readonly checkDatabaseReady: () => Promise<boolean>;
   /**
    * Optional, and absence means `GET /health/worker` is never registered at all — the same
-   * "absent means not registered" shape `sessionMock` uses in `build-app.ts`. This app currently
-   * wires no background worker pipeline, so `runtime/main.ts` omits this and only `GET /health`
-   * is mounted; a composition root that later starts one (`@repo/jobs` consumers) supplies its
-   * own bounded, never-throwing probe here.
+   * "absent means not registered" shape `sessionMock` uses in `build-app.ts`. `runtime/main.ts`
+   * supplies the reviews rating worker's own bounded, never-throwing `checkHealth`
+   * (`reviews-rating-worker.ts`) here; a composition root with no background worker pipeline at
+   * all would omit this and leave only `GET /health` mounted.
    */
   readonly checkWorkersHealthy?: () => Promise<WorkerHealth>;
 }

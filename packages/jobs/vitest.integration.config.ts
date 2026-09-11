@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config';
 
 // The Testcontainers postgres:18 suite: package-local
 // helper-level proofs (claim/regression-guard/write-ahead-conflict/completeBranch-count) so
-// spine bugs surface here, not only through the example-context acceptance suite.
+// spine bugs surface here, not only through packages/reviews' own acceptance suite.
 //
 // `resolve.conditions` + `server.deps.inline` are the same fix `apps/api/vitest.config.ts` carries,
 // for the same reason (review, 2026-09-09): `run-integration-suite.ts` runs this suite under Bun

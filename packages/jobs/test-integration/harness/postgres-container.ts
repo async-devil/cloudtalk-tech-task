@@ -11,7 +11,7 @@
  * 2026-07-24 consolidation) via `runMigrations`, THEN layers one test-only fixture schema
  * (`test_pipeline`) that instantiates the table templates by hand — this package
  * owns no domain pipeline table of its own (that is every consuming context's job,
- * `packages/example-context` at), so the helper-level proofs need a stand-in shaped exactly
+ * `packages/reviews` among them), so the helper-level proofs need a stand-in shaped exactly
  * like the frozen templates.
  */
 

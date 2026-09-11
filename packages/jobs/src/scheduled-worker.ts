@@ -16,9 +16,9 @@ import type { WorkerHandle } from '@repo/messaging';
  * the endpoint answered **200 while the outbox relay was dead** — precisely the failure that parks
  * outbox rows, and precisely the failure a "workers are actually attached" probe exists to catch.
  * The alternative available to the caller was to re-derive each `schedulerId` from this module's
- * private formula, which is the hand-typed-name risk that makes a probe report healthy forever
- * (`@repo/example-context`'s own scheduler check documents the same trap). Returning the facts is
- * the only version with no second copy of them.
+ * private formula, which is the hand-typed-name risk that makes a probe report healthy forever —
+ * exactly what this type exists to make impossible. Returning the facts is the only version with
+ * no second copy of them.
  *
  * Extends {@link WorkerHandle} rather than wrapping it, so every existing caller — all of which
  * only ever call `close()` — keeps compiling unchanged.
