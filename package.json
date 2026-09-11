@@ -9,7 +9,8 @@
   ],
   "scripts": {
     "extract-module": "bun tools/extract-module/src/index.ts",
-    "docs-index": "bun tools/arch-checks/src/docs-index.ts"
+    "docs-index": "bun tools/arch-checks/src/docs-index.ts",
+    "setup": "bun scripts/setup.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.3",
