@@ -107,6 +107,10 @@
       // Adding a package here is a reviewed change.
       "includes": [
         "tools/**",
+        // Repo-root developer tooling (TASK-0006's `bun run setup`) — spawns `docker compose`,
+        // migrate/seed scripts and both dev servers, and polls them over HTTP. Same non-bundle
+        // boundary as every other entry here.
+        "scripts/**",
         "apps/api/**",
         // BUILD TOOLING, not browser code — the route-tree freshness checker reads the filesystem
         // and spawns the generator. `apps/app/src/**` is deliberately not listed: that is the
