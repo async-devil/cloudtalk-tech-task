@@ -236,6 +236,22 @@ async function renderCatalogueSignedIn(
   return { queryClient, router };
 }
 
+describe('CatalogueScreen — the "Sign in" entry point', () => {
+  it('is present for an anonymous visitor, and points at /sign-in', async () => {
+    await renderCatalogue('/', [productsRoute(() => jsonResponse(pageOf([])))]);
+    await screen.findByText('No products in the catalogue yet.');
+    const link = await screen.findByTestId('sign-in-link');
+    expect(link.getAttribute('href')).toBe('/sign-in?returnTo=%2F');
+    expect(screen.queryByTestId('session-user-token')).toBeNull();
+  });
+
+  it('is absent once a session is present, replaced by "Signed in as"', async () => {
+    await renderCatalogueSignedIn('/', {}, [productsRoute(() => jsonResponse(pageOf([])))]);
+    await screen.findByTestId('session-user-token');
+    expect(screen.queryByTestId('sign-in-link')).toBeNull();
+  });
+});
+
 describe('CatalogueScreen — the "New product" entry point (TASK-0008)', () => {
   it('is absent for an anonymous visitor', async () => {
     await renderCatalogue('/', [productsRoute(() => jsonResponse(pageOf([])))]);
