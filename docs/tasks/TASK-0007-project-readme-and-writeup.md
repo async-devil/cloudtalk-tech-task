@@ -1,7 +1,7 @@
 ---
 id: TASK-0007
 title: Project README and the architecture write-up
-status: draft
+status: done
 adr: []
 date: 2026-09-08
 ---
@@ -18,15 +18,15 @@ Re-arguing decisions. The README links to the records; it does not restate them.
 
 ## Acceptance criteria
 
-- [ ] The setup command appears above the fold and works exactly as written.
-- [ ] Every architectural claim in the README names the check that enforces it or the record that
+- [x] The setup command appears above the fold and works exactly as written.
+- [x] Every architectural claim in the README names the check that enforces it or the record that
       decides it.
-- [ ] The known limitations are listed explicitly, including the absent mail transport and the
+- [x] The known limitations are listed explicitly, including the absent mail transport and the
       eventual consistency of the rating aggregate.
-- [ ] `ARCHITECTURE.md` traces one review submission from the HTTP request to the recomputed
+- [x] `ARCHITECTURE.md` traces one review submission from the HTTP request to the recomputed
       projection, naming each module it passes through.
-- [ ] Every internal link resolves; the docs check is green.
-- [ ] A reader who knows TypeScript but not this repository can locate where a new bounded context
+- [x] Every internal link resolves; the docs check is green.
+- [x] A reader who knows TypeScript but not this repository can locate where a new bounded context
       would go, from the README alone.
 
 ## Notes
