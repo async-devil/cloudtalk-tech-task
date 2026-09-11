@@ -61,9 +61,12 @@ test.describe('review moderation (TASK-0009)', () => {
     await expect(page.getByRole('heading', { name: productName })).toBeVisible();
     const productUrl = page.url();
 
-    // --- Submit a review on it (the real UI flow `catalogue-and-review.spec.ts` leaves skipped) ---
+    // --- Submit a review on it (the same UI flow catalogue-and-review.spec.ts exercises) ---
     await page.getByTestId('write-a-review').click();
-    await page.getByRole('radio', { name: '5 stars' }).click();
+    // `force: true`: the radio is visually `sr-only` and its own star glyph paints exactly on top
+    // of it (see catalogue-and-review.spec.ts's identical note) — a real click there still selects
+    // the star via native label-forwarding, which Playwright's actionability check does not model.
+    await page.getByRole('radio', { name: '5 stars' }).click({ force: true });
     await page.getByLabel('Title').fill(reviewTitle);
     await page
       .getByLabel('Review')

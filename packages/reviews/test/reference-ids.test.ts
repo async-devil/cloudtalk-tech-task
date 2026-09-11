@@ -23,6 +23,21 @@ describe('reference-ids: pinned against SPEC-0002 seeded ids', () => {
     expect(productCategoryIdFor('kitchen')).toBe(5);
   });
 
+  it('resolves a category name regardless of case or surrounding whitespace', () => {
+    // The only free-text input this closed vocabulary is ever matched against — the
+    // catalogue-authoring form and the catalogue's own search filter — has no vocabulary hint
+    // beyond the filter's own placeholder text, which is itself capitalized ("e.g. Audio").
+    expect(productCategoryIdFor('Audio')).toBe(1);
+    expect(productCategoryIdFor('AUDIO')).toBe(1);
+    expect(productCategoryIdFor('  audio  ')).toBe(1);
+  });
+
+  it('still rejects a name that names no seeded category, normalized or not', () => {
+    expect(() => productCategoryIdFor('Not A Real Category')).toThrow(
+      'unknown product category "Not A Real Category"',
+    );
+  });
+
   it('resolves every seeded product category id back to its name', () => {
     expect(productCategoryNameFor(1)).toBe('audio');
     expect(productCategoryNameFor(2)).toBe('computing');
