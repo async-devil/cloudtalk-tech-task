@@ -10,11 +10,12 @@
  * THE BOUND IS PER PROBE, AND THE CALLER OWNS THE COMPOSED ONE. A caller that awaits N of these
  * one after another has a ceiling of N deadlines, not one, and this file's "may not hang past a
  * small ceiling" says nothing about that — which is how `/health/worker` came to take a measured
- * 8.01s against a downed Redis while this constant read 2000ms (runtime verification;
- * `@repo/example-context`'s `checkHealth` awaited one lookup per registered schedule inside a
- * `for` loop, so the endpoint's real ceiling grew with the pipeline). Probe concurrently.
- * `packages/example-context/test-integration/check-health.test.ts`'s ceiling case is the measurement that
- * keeps that true for the one caller on an inbound-request path.
+ * 8.01s against a downed Redis while this constant read 2000ms (runtime verification; an earlier
+ * `checkHealth` implementation awaited one lookup per registered schedule inside a `for` loop, so
+ * the endpoint's real ceiling grew with the pipeline). Probe concurrently.
+ * `apps/api/src/runtime/reviews-rating-worker.ts`'s own `checkHealth` — the one caller on an
+ * inbound-request path today — is the current instance of that discipline: `Promise.all` over
+ * every worker and every scheduler, never a `for` loop of sequential awaits.
  */
 
 /**

@@ -14,7 +14,7 @@ import { defineConfig } from 'vitest/config';
 // retired the slice_notes demo flow and, with it, this app's only `*.itest.ts` files
 // (`slice.e2e.itest.ts`, `observability.itest.ts`, and their shared Testcontainers harness) —
 // `passWithNoTests` (below) keeps this task green with zero matching files until the next
-// container-backed suite lands. `packages/example-context/test-integration/` is where
+// container-backed suite lands. `packages/reviews/test-integration/` is where
 // the durability-spine container proofs live now.
 //
 // ADR-0010: container suites share infra per file (each suite's own `beforeAll` starts its own
