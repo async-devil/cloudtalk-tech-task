@@ -55,10 +55,16 @@ const REVIEW_MODERATION_STATE_ID_BY_MODERATABLE_NAME = new Map<'published' | 're
  * `listProducts` still narrows first via `isProductCategoryName` — not for this function's type
  * signature, but because its own `category` query parameter needs a different `details.field` than
  * this function's default `'categoryName'` on the thrown error.
+ *
+ * Matches case- and surrounding-whitespace-insensitively (`.trim().toLowerCase()`): every place a
+ * caller types this string — the catalogue-authoring form, the catalogue's own search filter — is
+ * free text with no vocabulary hint beyond the filter's own placeholder text, which is itself
+ * capitalized ("e.g. Audio"). The thrown message still quotes the caller's ORIGINAL string, not the
+ * normalized one, so it reflects what was actually typed.
  * @throws ValidationError when `categoryName` names no seeded category.
  */
 export function productCategoryIdFor(categoryName: string): ProductCategoryId {
-  const id = PRODUCT_CATEGORY_ID_BY_NAME.get(categoryName);
+  const id = PRODUCT_CATEGORY_ID_BY_NAME.get(categoryName.trim().toLowerCase());
   if (id === undefined) {
     throw new ValidationError(`unknown product category "${categoryName}"`, {
       details: { field: 'categoryName' },

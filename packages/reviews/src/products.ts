@@ -353,7 +353,13 @@ function productCursorFilter(
  * to the union `productCategoryIdFor` requires, WITHOUT a cast: an unrecognised name throws
  * `ValidationError({ field: 'category' })` here rather than reaching `productCategoryIdFor`'s own
  * throw, which names the field `categoryName` — the right field for `createProduct`'s input, the
- * wrong one for this route's `category` query parameter. */
+ * wrong one for this route's `category` query parameter.
+ *
+ * Exact-case on purpose: `listProducts` (this function's only caller) already normalizes before
+ * calling it, so the type predicate only ever runs against a canonical-cased string. Normalizing
+ * IN here too would make a `true` result narrow `value`'s STATIC type to `ProductCategoryName`
+ * while its RUNTIME value could still be un-normalized (e.g. "Audio") — a type predicate that lies
+ * about the exact value it was given. */
 function isProductCategoryName(value: string): value is ProductCategoryName {
   return Object.values(PRODUCT_CATEGORY).some((category) => category.name === value);
 }
@@ -376,12 +382,17 @@ export function listProducts(
   return obs.withSpan('reviews.product.list', async () => {
     const filters: RawBuilder<unknown>[] = [sql`1 = 1`];
     if (input.category !== undefined) {
-      if (!isProductCategoryName(input.category)) {
+      // Normalized once, here, rather than inside `isProductCategoryName` itself: that keeps its
+      // `value is ProductCategoryName` predicate honest — it only ever runs against an
+      // already-canonical-cased string, so a `true` result never narrows a variable whose runtime
+      // value (e.g. the original "Audio") isn't actually a member of the union it claims to be.
+      const normalizedCategory = input.category.trim().toLowerCase();
+      if (!isProductCategoryName(normalizedCategory)) {
         throw new ValidationError(`unknown product category "${input.category}"`, {
           details: { field: 'category' },
         });
       }
-      filters.push(sql`p.product_category_id = ${productCategoryIdFor(input.category)}`);
+      filters.push(sql`p.product_category_id = ${productCategoryIdFor(normalizedCategory)}`);
     }
     if (input.query !== undefined && input.query.length > 0) {
       filters.push(

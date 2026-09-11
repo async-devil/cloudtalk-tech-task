@@ -61,4 +61,9 @@ describe('productUpdateBindsFor: the reviews.product immutability guard (SPEC-00
     const input: UpdateProductInput = { productSlug: 'sony-wh-1000xm5', categoryName: 'audio' };
     expect(productUpdateBindsFor(input).productCategoryId).toBe(1);
   });
+
+  it('resolves categoryName regardless of case or surrounding whitespace', () => {
+    const input: UpdateProductInput = { productSlug: 'sony-wh-1000xm5', categoryName: 'Audio' };
+    expect(productUpdateBindsFor(input).productCategoryId).toBe(1);
+  });
 });
