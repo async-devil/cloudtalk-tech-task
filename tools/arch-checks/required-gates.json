@@ -1,4 +1,4 @@
 {
   "_comment": "ADR-0010's anti-hollowing manifest. Adding a gate JOB to a workflow requires appending its job id here in the same change -- gate-integrity.ts fails any workflow file missing a job id listed for it below. Removing a gate therefore means editing this file too, which is the loud, reviewable diff the decision wants. Only WORKFLOW JOB IDS belong here: a moon task run inside an existing job (every root:* gate runs inside `ci` via `moon ci`) does not get its own entry.",
-  "ci.yml": ["ci", "docs-check", "gate-integrity"]
+  "ci.yml": ["ci", "docs-check", "gate-integrity", "e2e"]
 }
