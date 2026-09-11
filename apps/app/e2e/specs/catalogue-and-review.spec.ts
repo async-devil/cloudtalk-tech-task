@@ -4,44 +4,32 @@ import { expect, test } from '../fixtures.js';
  * TASK-0004's own acceptance criterion: "A Playwright spec covers: browse, open a product, submit
  * a review, see it in the list." (SPEC-0001 J1 + J2 end to end.)
  *
- * ============================================================================================
- * BLOCKED ON: no product-seeding mechanism is reachable from this e2e suite yet.
- * ============================================================================================
+ * Unblocked by TASK-0006: `apps/app/e2e/harness/start-api-server.ts` now seeds a real catalogue
+ * (`apps/api/src/db/seed.ts`) into the shared compose Postgres before spawning the api, so this
+ * spec targets the seeded `sony-wh-1000xm5` product by name — the same search-then-click-by-name
+ * pattern `catalogue-authoring.spec.ts` already uses to find one product regardless of how many
+ * others exist, rather than a fragile "click the first link" (whose target depends on the
+ * catalogue's default `rating` sort and every seeded product's current aggregate).
  *
- * This spec needs at least one real `reviews.product` row to browse to and review. Investigated,
- * in the order TASK-0004's own dispatch names:
- *
- *   1. `apps/api`'s test-mode composition root (`apps/api/src/runtime/test-session-route.ts` and
- *      its siblings under `apps/api/src/runtime/`) — mints a session for ANY address (open signup,
- *      `AUTH_SIGNUP_POSTURE=open` in this stack), but has no analogous "seed a product" route and
- *      no hook for granting the `catalogue_manager` capability to a minted session. Without that
- *      capability, `products.create` answers `FORBIDDEN` regardless of session.
- *   2. `apps/app/e2e/harness/start-api-server.ts` — spawns the real composition root and runs
- *      `apps/api/src/db/migrate.ts` against the compose Postgres, but exposes no `Kysely` (or any
- *      other DB) handle back to the specs — it is a process-spawner, not a fixture provider.
- *   3. TASK-0006 ("seeded catalogue the screens assume", per SPEC-0001's own traceability table)
- *      has not landed yet — there is genuinely no seed data mechanism anywhere in this checkout.
- *
- * Per TASK-0004's own instruction, deliberately NOT worked around by: inventing a new backend
- * test-only product-creation route (out of scope for a frontend-focused change — that is
- * `apps/api` surface, and a route minted for exactly one e2e spec is the kind of change a review
- * should see argued on its own, not smuggled in here), or by asserting against a product slug that
- * does not exist and pretending that proves the review flow.
- *
- * WHAT THIS SPEC DOES INSTEAD, for now: proves the pieces that do not need seed data — an
- * authenticated visit to the public catalogue, and the empty state SPEC-0001 S2 specifies for a
- * genuinely empty catalogue (which, before TASK-0006 seeds anything, this checkout's compose
- * Postgres always is). The review-submission half is written out in full below and gated behind
- * `test.skip(true, …)`, so unblocking it later is "delete one line", not "write the spec from
- * scratch" — flip it once either TASK-0006's seed lands or `apps/api` grows a sanctioned
- * `catalogue_manager`-capable session mint for e2e.
+ * The review-author email carries a random suffix, not just `Date.now()`: unlike every other spec
+ * in this suite, this test submits a review against a SHARED, pre-existing product rather than one
+ * it creates itself, and both Chromium projects (`desktop-chromium`/`mobile-chromium`) run
+ * concurrently against the same compose Postgres — a same-millisecond `Date.now()` collision would
+ * otherwise risk two authors racing the `(product_id, author_id)` natural key.
  */
+const SEEDED_PRODUCT_NAME = 'Sony WH-1000XM5';
+const SEEDED_PRODUCT_SLUG = 'sony-wh-1000xm5';
+
+function uniqueEmail(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@example.test`;
+}
+
 test.describe('catalogue and review submission (TASK-0004)', () => {
   test('an authenticated visitor can browse the public catalogue', async ({
     page,
     authenticate,
   }) => {
-    await authenticate(`catalogue-${Date.now()}@example.test`);
+    await authenticate(uniqueEmail('catalogue'));
 
     await page.goto('/');
 
@@ -49,33 +37,29 @@ test.describe('catalogue and review submission (TASK-0004)', () => {
     // Signed in — proven the same way `magic-link.spec.ts` proves a genuine session: a value only
     // a resolved session produces, not the mere absence of a redirect.
     await expect(page.getByTestId('session-user-token')).toBeVisible();
-    // Before TASK-0006 seeds anything, this compose Postgres has no products — SPEC-0001 S2's own
-    // "empty (no products)" state, not a broken page.
-    await expect(page.getByText('No products in the catalogue yet.')).toBeVisible();
+    // The seeded catalogue is browsable — searching for a known seeded product finds it.
+    await page.getByLabel('Search').fill(SEEDED_PRODUCT_NAME);
+    await expect(page.getByRole('link', { name: new RegExp(SEEDED_PRODUCT_NAME) })).toBeVisible();
   });
 
-  // `test.skip(title, fn)`, not a conditional `test.skip()` call inside the body: this spec is
-  // unconditionally blocked on missing seed data (this file's header comment explains exactly
-  // what is missing), so it is declared skipped from the outside — the same shape `test.only`
-  // takes to declare a test, not the runtime early-exit form of `test.skip()`. Change back to
-  // `test(...)` once a product is reachable in this suite.
-  test.skip('browse, open a product, submit a review, and see it in the list', async ({
+  test('browse, open a product, submit a review, and see it in the list', async ({
     page,
     authenticate,
   }) => {
-    const email = `review-${Date.now()}@example.test`;
-    await authenticate(email);
-
-    // TODO(TASK-0006 or a sanctioned e2e product-seeding mechanism): replace with the real slug of
-    // a seeded product once one exists.
-    const productSlug = 'REPLACE-ME-WITH-A-SEEDED-PRODUCT-SLUG';
+    await authenticate(uniqueEmail('review'));
 
     await page.goto('/');
-    await page.getByRole('link', { name: /./ }).first().click();
-    await expect(page).toHaveURL(new RegExp(`/products/${productSlug}$`));
+    await page.getByLabel('Search').fill(SEEDED_PRODUCT_NAME);
+    await page.getByRole('link', { name: new RegExp(SEEDED_PRODUCT_NAME) }).click();
+    await expect(page).toHaveURL(new RegExp(`/products/${SEEDED_PRODUCT_SLUG}$`));
 
     await page.getByTestId('write-a-review').click();
-    await page.getByRole('radio', { name: '5 stars' }).click();
+    // `force: true`: the radio is visually `sr-only` and its own star glyph paints exactly on top
+    // of it (verified: the glyph's rendered box contains the input's computed click point), which
+    // Playwright's actionability check correctly flags — but a real click there still selects the
+    // star, because the click lands inside the `<label>` wrapping both, and the browser's native
+    // label-forwarding activates the associated input regardless of what painted on top of it.
+    await page.getByRole('radio', { name: '5 stars' }).click({ force: true });
     await page.getByLabel('Title').fill('Excellent purchase');
     await page
       .getByLabel('Review')

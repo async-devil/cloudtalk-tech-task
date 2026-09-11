@@ -3,11 +3,13 @@
  * `APP_MODE=test` against compose services").
  *
  * Brings up `deploy/compose/dev.yml` (Postgres + Redis + otel-lgtm — the dev stack) if it is not
- * already reachable, applies the persistence migrations against it, then spawns the REAL
- * composition root (`apps/api/src/runtime/main.ts`) in `APP_MODE=test` — the exact entry
- * `moon run api:dev` boots, not a hand-rolled stand-in. Every env value the composition root reads
- * is set explicitly below rather than left to its non-live defaults, because some of those
- * defaults are WRONG for this stack specifically (see `RUNTIME_ENV`'s comments).
+ * already reachable, applies the persistence migrations against it, seeds a realistic catalogue
+ * (TASK-0006's `apps/api/src/db/seed.ts` — every spec gets a real product to browse rather than
+ * having to create its own fixture data), then spawns the REAL composition root
+ * (`apps/api/src/runtime/main.ts`) in `APP_MODE=test` — the exact entry `moon run api:dev` boots,
+ * not a hand-rolled stand-in. Every env value the composition root reads is set explicitly below
+ * rather than left to its non-live defaults, because some of those defaults are WRONG for this
+ * stack specifically (see `RUNTIME_ENV`'s comments).
  *
  * `docker compose` is only invoked when `E2E_DATABASE_URL`/`E2E_REDIS_URL` are unset (i.e. the
  * caller wants the default compose-backed stack this file names): a caller pointing this script at
@@ -29,6 +31,7 @@ const REPO_ROOT = fileURLToPath(new URL('../../../..', import.meta.url));
 const COMPOSE_FILE = `${REPO_ROOT}/deploy/compose/dev.yml`;
 const API_MAIN_ENTRY = `${REPO_ROOT}/apps/api/src/runtime/main.ts`;
 const API_MIGRATE_ENTRY = `${REPO_ROOT}/apps/api/src/db/migrate.ts`;
+const API_SEED_ENTRY = `${REPO_ROOT}/apps/api/src/db/seed.ts`;
 
 /**
  * The compose services this stack actually needs, named rather than left implicit.
@@ -70,12 +73,12 @@ const RUNTIME_ENV: Record<string, string> = {
   HTTP_CORS_ALLOWED_ORIGINS: 'http://localhost:4173',
 };
 
-function runToCompletion(command: string, args: readonly string[]): void {
-  const result = spawnSync(command, args, {
-    cwd: REPO_ROOT,
-    stdio: 'inherit',
-    env: { PATH: process.env.PATH ?? '' },
-  });
+function runToCompletion(
+  command: string,
+  args: readonly string[],
+  env: Record<string, string> = { PATH: process.env.PATH ?? '' },
+): void {
+  const result = spawnSync(command, args, { cwd: REPO_ROOT, stdio: 'inherit', env });
   if (result.error !== undefined) {
     throw result.error;
   }
@@ -139,6 +142,17 @@ async function main(): Promise<void> {
 
   process.stdout.write('start-api-server: migrating\n');
   await migrateWithRetry();
+
+  // Idempotent (TASK-0006: accounts matched by email, products by slug, reviews by natural key) —
+  // safe on every invocation, including against this harness's own intentionally-reused warm
+  // compose Postgres between local runs. Gives every spec a real catalogue to browse rather than
+  // each one having to create its own fixture data from nothing.
+  process.stdout.write('start-api-server: seeding\n');
+  runToCompletion('bun', [API_SEED_ENTRY], {
+    PATH: process.env.PATH ?? '',
+    APP_MODE: 'test',
+    DATABASE_URL: databaseUrl,
+  });
 
   process.stdout.write('start-api-server: starting api\n');
   const child: ChildProcessWithoutNullStreams = spawn('bun', [API_MAIN_ENTRY], {
